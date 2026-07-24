@@ -1,2 +1,0 @@
-# quanto
-finances manage

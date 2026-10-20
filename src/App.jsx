@@ -1533,7 +1533,7 @@ export default function App() {
     (async () => {
       try {
         const cfg = await window.storage.get("household-config", true);
-        if (cfg) setConfig(JSON.parse(cfg.value));
+        if (cfg) { const parsed = JSON.parse(cfg.value); setConfig(parsed); if (window.storage.cloud) setCurrentUser(parsed.members[0]); }
       } catch (e) { /* no household yet */ }
       try {
         const rec = await window.storage.get("finance-records", true);
@@ -1541,6 +1541,17 @@ export default function App() {
       } catch (e) { /* none yet */ }
       setLoading(false);
     })();
+  }, []);
+
+  useEffect(() => {
+    const receive = (event) => {
+      try {
+        if (event.detail["household-config"]) { const next = JSON.parse(event.detail["household-config"]); setConfig(next); setCurrentUser(current => next.members.find(member => member.id === current?.id) || next.members[0]); }
+        if (event.detail["finance-records"]) setRecords(JSON.parse(event.detail["finance-records"]));
+      } catch (error) { console.error("Cloud data could not be loaded", error); }
+    };
+    window.addEventListener("quanto-cloud-data", receive);
+    return () => window.removeEventListener("quanto-cloud-data", receive);
   }, []);
 
   const saveConfig = useCallback(async (next) => {
@@ -1593,7 +1604,7 @@ export default function App() {
       config={config} saveConfig={saveConfig}
       records={records} saveRecords={saveRecords}
       currentUser={currentUser}
-      onLogout={() => setCurrentUser(null)}
+      onLogout={() => window.storage.cloud ? window.storage.signOut() : setCurrentUser(null)}
     />
   );
 

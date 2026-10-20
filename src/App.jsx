@@ -12,7 +12,7 @@ import {
   Scale, Pencil, Sun, Moon,
 } from "lucide-react";
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
-import { expandTransactions, transactionValue, periodBounds, inPeriod } from "./finance.js";
+import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
 
 /* ---------------------------------------------------------------------- */
@@ -933,6 +933,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   }, [visibleTx, toUSD, monthKey, config.cycleDay]);
 
   const netWorth = totals.activo - totals.pasivo;
+  const available = useMemo(() => availableBalance(visibleTx, config.isVenezuela, todayISO()), [visibleTx, config.isVenezuela]);
 
   const pieData = useMemo(() => {
     const byCat = {};
@@ -1101,6 +1102,21 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 );
               })}
             </div>
+
+            <Card>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-medium" style={{color:C.text}}>{lang === "es" ? "Saldo disponible acumulado" : "Accumulated available balance"}</h2>
+                  <p className="text-3xl font-semibold mt-2" style={{...display,color:available.balance >= 0 ? C.teal : C.red}}>{money(available.balance)}</p>
+                </div>
+                <Wallet size={28} style={{color:C.muted}} />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3 mt-4 text-sm" style={{color:C.muted}}>
+                <p>{lang === "es" ? "Ingresos acumulados" : "Accumulated income"}: <strong style={{color:C.teal}}>{money(available.income)}</strong></p>
+                <p>{lang === "es" ? "Gastos acumulados" : "Accumulated expenses"}: <strong style={{color:C.red}}>{money(available.expenses)}</strong></p>
+              </div>
+              <p className="text-xs mt-3 leading-relaxed" style={{color:C.muted}}>{lang === "es" ? "Ingresos menos gastos registrados hasta hoy, incluyendo comisiones. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Income minus expenses recorded through today, including fees. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</p>
+            </Card>
 
             <Card>
               <div className="flex items-center justify-between">

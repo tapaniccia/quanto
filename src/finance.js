@@ -42,3 +42,10 @@ export function expandTransactions(list,start,end,exceptions={}) {
     return items.map(item=>({...item,...exceptions[item.id]}));
   }).filter(tx=>!tx.skipped && tx.date>=start && tx.date<end);
 }
+
+export function availableBalance(transactions, venezuela, asOf = iso(new Date())) {
+  const posted = transactions.filter(tx => tx.date && tx.date <= asOf);
+  const sum = type => posted.filter(tx => tx.type === type).reduce((total,tx) => total + transactionValue(tx,venezuela),0);
+  const income = sum('ingreso'), expenses = sum('egreso');
+  return {income, expenses, balance: income - expenses};
+}

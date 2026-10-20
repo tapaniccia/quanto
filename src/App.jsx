@@ -787,7 +787,7 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#05090F99" }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="quanto-transaction-modal w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
@@ -808,19 +808,19 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
           ))}
         </div>
 
-        <label className="text-xs" style={{ color: C.muted }}>{t("description")} ({lang === "es" ? "opcional" : "optional"})</label>
-        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("optionalNote")}
+        <label htmlFor="tx-desc" className="text-xs" style={{ color: C.muted }}>{t("description")} ({lang === "es" ? "opcional" : "optional"})</label>
+        <input id="tx-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={lang==="es"?"Ej. Compra semanal (opcional)":"e.g. Weekly groceries (optional)"}
           className="w-full mt-1.5 mb-3 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
 
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
-            <label className="text-xs" style={{ color: C.muted }}>{t("date")}</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            <label htmlFor="tx-date" className="text-xs" style={{ color: C.muted }}>{t("date")}</label>
+            <input type="date" id="tx-date" value={date} onChange={(e) => setDate(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
           </div>
           <div>
-            <label className="text-xs" style={{ color: C.muted }}>{t("owner")}</label>
-            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
+            <label htmlFor="tx-ownerId" className="text-xs" style={{ color: C.muted }}>{t("owner")}</label>
+            <select id="tx-ownerId" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }}>
               {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
@@ -830,8 +830,8 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
         <div className={`grid ${config.isVenezuela ? "grid-cols-3" : "grid-cols-1"} gap-2 mb-3`}>
           {config.isVenezuela && (
             <div>
-              <label className="text-xs" style={{ color: C.muted }}>{t("currency")}</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)}
+              <label htmlFor="tx-currency" className="text-xs" style={{ color: C.muted }}>{t("currency")}</label>
+              <select id="tx-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}
                 className="w-full mt-1.5 px-2 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }}>
                 <option value="USD">USD</option>
                 <option value="BS">Bs</option>
@@ -839,14 +839,14 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
             </div>
           )}
           <div className={config.isVenezuela ? "col-span-1" : ""}>
-            <label className="text-xs" style={{ color: C.muted }}>{t("amountInCurrency")} {!config.isVenezuela && `(${config.currency.symbol})`}</label>
-            <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
+            <label htmlFor="tx-amount" className="text-xs" style={{ color: C.muted }}>{t("amountInCurrency")} {!config.isVenezuela && `(${config.currency.symbol})`}</label>
+            <input type="number" min="0" step="0.01" id="tx-amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
           </div>
           {config.isVenezuela && currency === "BS" && (
             <div>
-              <label className="text-xs" style={{ color: C.muted }}>{t("rateUsed")}</label>
-              <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
+              <label htmlFor="tx-rate" className="text-xs" style={{ color: C.muted }}>{t("rateUsed")}</label>
+              <input type="number" min="0" step="0.01" id="tx-rate" value={rate} onChange={(e) => setRate(e.target.value)}
                 className="w-full mt-1.5 px-2 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
             </div>
           )}
@@ -1009,7 +1009,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const delRate = (idx) => { saveRecords({ ...records, rates: records.rates.filter((_, i) => i !== idx) }); showToast(t("rateDeleted")); };
 
   return (
-    <div className="min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
+    <div className="quanto-app min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
       <div className="fixed -top-60 left-1/3 w-[700px] h-[700px] rounded-full opacity-[0.07] blur-3xl pointer-events-none" style={{ background: C.grad }} />
       {/* Sidebar */}
       <aside className="w-60 shrink-0 hidden md:flex flex-col p-5 relative" style={{ borderRight: `1px solid ${C.border}` }}>
@@ -1069,7 +1069,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "calendar" && <Planning records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={() => {setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={() => {setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <Comparison transactions={visibleTx} config={config} lang={lang} />
@@ -1385,7 +1385,7 @@ function RatesTab({ lang, t, rates, addRate, delRate }) {
           </div>
           <div>
             <label className="text-xs" style={{ color: C.muted }}>{t("rateValue")}</label>
-            <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
+            <input type="number" min="0" step="0.01" id="tx-rate" value={rate} onChange={(e) => setRate(e.target.value)}
               className="block mt-1.5 px-3 py-2 rounded-lg text-sm outline-none w-32" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
           </div>
           <Btn disabled={!rate || Number(rate) <= 0} onClick={() => { addRate({ date, rate: Number(rate) }); setRate(""); }}>

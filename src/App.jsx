@@ -11,6 +11,8 @@ import {
   Eye, EyeOff, Sparkles, Trash2, PiggyBank, KeyRound, LayoutGrid, Receipt,
   Scale, Pencil, Sun, Moon,
 } from "lucide-react";
+import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
+import { expandTransactions, transactionValue, periodBounds, inPeriod } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
 
 /* ---------------------------------------------------------------------- */
@@ -67,6 +69,10 @@ function useFonts() {
       input[type=checkbox]{ accent-color: #0F7C42; width:16px; height:16px; }
       ::-webkit-scrollbar{ width:8px; height:8px; }
       ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.12); border-radius:8px; }
+      input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+        outline: 2px solid #0F7C42 !important; outline-offset: 2px;
+      }
+      @keyframes toastIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
     `;
     document.head.appendChild(link);
   }, []);
@@ -192,6 +198,21 @@ const STR = {
     liabilityTip: "Lo que debes: tarjetas, préstamos e hipotecas.",
     netWorthTip: "Activos menos pasivos: tu situación financiera real.",
     heroSub: "Un solo lugar para ver, en pareja, de dónde viene el dinero y a dónde va.",
+    confirmDeleteTx: "¿Eliminar este movimiento? No se puede deshacer.",
+    confirmDeleteRate: "¿Eliminar esta tasa? No se puede deshacer.",
+    yesDelete: "Sí, eliminar",
+    txSaved: "Movimiento guardado.",
+    txDeleted: "Movimiento eliminado.",
+    rateSaved: "Tasa añadida.",
+    rateDeleted: "Tasa eliminada.",
+    noTxHint: "Usa \"Añadir movimiento\" para registrar el primero.",
+    noRatesHint: "Registra una tasa con la fecha y el valor de arriba.",
+    editEntryTitle: "Editar",
+    deleteEntry: "Eliminar movimiento",
+    editEntryAction: "Editar movimiento",
+    themeToggle: "Cambiar tema",
+    langToggle: "Cambiar idioma",
+    closeDialog: "Cerrar",
   },
   en: {
     tagline: "The household ledger",
@@ -302,6 +323,21 @@ const STR = {
     liabilityTip: "What you owe: cards, loans, and mortgages.",
     netWorthTip: "Assets minus liabilities: your real financial position.",
     heroSub: "One place to see, together, where the money comes from and where it goes.",
+    confirmDeleteTx: "Delete this entry? This can't be undone.",
+    confirmDeleteRate: "Delete this rate? This can't be undone.",
+    yesDelete: "Yes, delete",
+    txSaved: "Entry saved.",
+    txDeleted: "Entry deleted.",
+    rateSaved: "Rate added.",
+    rateDeleted: "Rate deleted.",
+    noTxHint: "Use \"Add entry\" to log the first one.",
+    noRatesHint: "Log a rate with the date and value above.",
+    editEntryTitle: "Edit",
+    deleteEntry: "Delete entry",
+    editEntryAction: "Edit entry",
+    themeToggle: "Toggle theme",
+    langToggle: "Switch language",
+    closeDialog: "Close",
   },
 };
 
@@ -415,12 +451,13 @@ function Card({ children, style, className = "" }) {
   );
 }
 
-function Btn({ children, onClick, variant = "primary", className = "", type = "button", disabled }) {
+function Btn({ children, onClick, variant = "primary", className = "", type = "button", disabled, ...rest }) {
   const C = useC();
   const styles = {
     primary: { background: C.grad, color: "#fff", boxShadow: "0 6px 20px -6px rgba(15,124,66,0.5)" },
     ghost: { background: C.card2, color: C.text, border: `1px solid ${C.border}` },
     danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}55` },
+    dangerSolid: { background: "#C2453A", color: "#fff" },
   };
   return (
     <button
@@ -429,6 +466,7 @@ function Btn({ children, onClick, variant = "primary", className = "", type = "b
       onClick={onClick}
       className={`px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none ${className}`}
       style={{ ...styles[variant], ...body }}
+      {...rest}
     >
       {children}
     </button>
@@ -503,11 +541,12 @@ function Logo({ height = 32 }) {
   );
 }
 
-function ThemeToggle({ className = "" }) {
+function ThemeToggle({ className = "", lang = "es" }) {
   const { theme, setTheme, C } = useThemeCtx();
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      aria-label={STR[lang].themeToggle}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${className}`}
       style={{ color: C.muted, border: `1px solid ${C.border}`, background: C.card }}
     >
@@ -519,6 +558,62 @@ function ThemeToggle({ className = "" }) {
 function fmt(n) {
   const v = Number(n) || 0;
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Toast feedback (for save / delete actions)                             */
+/* ---------------------------------------------------------------------- */
+const ToastContext = createContext(null);
+const useToast = () => useContext(ToastContext);
+
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const show = useCallback((message) => {
+    const id = uid();
+    setToasts((t) => [...t, { id, message }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2600);
+  }, []);
+  return (
+    <ToastContext.Provider value={show}>
+      {children}
+      <ToastStack toasts={toasts} />
+    </ToastContext.Provider>
+  );
+}
+
+function ToastStack({ toasts }) {
+  const { C } = useThemeCtx();
+  if (!toasts.length) return null;
+  return (
+    <div className="fixed z-[100] bottom-5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none px-4 w-full" role="status" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className="px-4 py-2.5 rounded-full text-sm shadow-xl flex items-center gap-2"
+          style={{ background: C.bg === DARK.bg ? "#1C1F14" : "#20220F", color: "#F5F5F0", border: `1px solid ${C.border}`, animation: "toastIn 0.2s ease-out", ...body }}>
+          <Check size={14} style={{ color: C.teal }} />
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Confirm dialog (for destructive actions)                               */
+/* ---------------------------------------------------------------------- */
+function ConfirmDialog({ message, confirmLabel, cancelLabel, onConfirm, onCancel }) {
+  const C = useC();
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "#05090F99" }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label={message}
+        className="w-full max-w-sm rounded-2xl p-5" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
+        <p className="text-sm mb-5" style={{ color: C.text }}>{message}</p>
+        <div className="flex gap-2">
+          <Btn variant="ghost" onClick={onCancel} className="flex-1">{cancelLabel}</Btn>
+          <Btn variant="dangerSolid" onClick={onConfirm} className="flex-1">{confirmLabel}</Btn>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------------------------------------------------------------- */
@@ -546,12 +641,12 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden" style={{ background: C.bg, ...body }}>
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden" style={{ background: C.bg, color: C.text, ...body }}>
       <div className="absolute -top-40 -left-40 w-[520px] h-[520px] rounded-full opacity-20 blur-3xl pointer-events-none" style={{ background: C.grad }} />
       <div className="absolute -bottom-52 -right-40 w-[520px] h-[520px] rounded-full opacity-[0.12] blur-3xl pointer-events-none" style={{ background: C.teal }} />
 
       <div className="absolute top-5 right-5 flex items-center gap-2">
-        <ThemeToggle />
+        <ThemeToggle lang={lang} />
         <button onClick={() => setLang(lang === "es" ? "en" : "es")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs backdrop-blur" style={{ color: C.muted, border: `1px solid ${C.border}`, background: C.card }}>
           <Globe size={13} /> {lang === "es" ? "English" : "Español"}
         </button>
@@ -643,9 +738,10 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
   const C = useC();
   const t = (k) => STR[lang][k];
   const cats = CATS[type];
+  const [extra, setExtra] = useState({...editing, repeatUnit: editing?.recurrence?.unit || "", repeatEvery: editing?.recurrence?.every || 1, repeatUntil: editing?.recurrence?.until || ""});
   const [catId, setCatId] = useState(editing?.catId || cats[0].id);
   const [desc, setDesc] = useState(editing?.desc || "");
-  const [date, setDate] = useState(editing?.date || todayISO());
+  const [date, setDate] = useState(editing ? (editing.date || "") : todayISO());
   const [currency, setCurrency] = useState(editing?.currency || (config.isVenezuela ? "USD" : config.currency.code));
   const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
   const [rate, setRate] = useState(editing?.rate ? String(editing.rate) : "");
@@ -661,7 +757,7 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
   }, [catId]); // eslint-disable-line
 
   useEffect(() => {
-    if (editing) return; // don't auto-fill rate when editing an existing entry
+    if (editing || extra.rateName) return; // preserve explicitly selected and historical rates
     if (config.isVenezuela && currency === "BS") {
       const sorted = [...rates].filter((r) => r.date <= date).sort((a, b) => (a.date < b.date ? 1 : -1));
       const nearest = sorted[0] || [...rates].sort((a, b) => (a.date < b.date ? -1 : 1))[0];
@@ -669,15 +765,18 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
     }
   }, [currency, date]); // eslint-disable-line
 
+  useEffect(() => { if (extra.selectedRate) setRate(String(extra.selectedRate)); }, [extra.selectedRate]);
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
   const meta = TYPE_META[type];
-  const canSave = desc.trim() && amount && Number(amount) > 0 && (currency !== "BS" || Number(rate) > 0);
+  const canSave = Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
   const save = () => {
+    if (!canSave) return;
     const amt = Number(amount);
     const usedRate = currency === "BS" ? Number(rate) : null;
     onSave({
+      ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
       id: editing ? editing.id : uid(), type, catId, desc: desc.trim(), date, currency,
       amount: amt, rate: usedRate, ownerId, private: isPrivate, tag: showTags ? tag : null,
     });
@@ -686,13 +785,13 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#05090F99" }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
             <h3 className="font-medium" style={{ color: C.text }}>{editing ? t("editEntry") : t("addMovement")} · {t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
           </div>
-          <button onClick={onClose}><X size={18} style={{ color: C.muted }} /></button>
+          <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
 
         <label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
@@ -707,14 +806,14 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
           ))}
         </div>
 
-        <label className="text-xs" style={{ color: C.muted }}>{t("description")}</label>
+        <label className="text-xs" style={{ color: C.muted }}>{t("description")} ({lang === "es" ? "opcional" : "optional"})</label>
         <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("optionalNote")}
           className="w-full mt-1.5 mb-3 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
 
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
             <label className="text-xs" style={{ color: C.muted }}>{t("date")}</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayISO()}
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
           </div>
           <div>
@@ -771,6 +870,9 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
           </div>
         )}
 
+        <ExtraFields value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} />
+        <p className="text-sm mb-3" style={{color:C.text}}>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</p>
+        <p className="text-xs mb-3" style={{color:C.muted}}>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</p>
         <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
           <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
           <span className="text-sm flex items-center" style={{ color: C.text }}><Lock size={12} className="mr-1" style={{ color: C.muted }} />{t("private")}</span>
@@ -794,23 +896,20 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
   const t = (k) => STR[lang][k];
+  const showToast = useToast();
   const [tab, setTab] = useState("overview");
   const [modalType, setModalType] = useState(null);
   const [editingTx, setEditingTx] = useState(null);
+  const [search, setSearch] = useState("");
+  const allVisible = useMemo(() => records.transactions.filter(tx => !tx.private || tx.ownerId === currentUser.id), [records.transactions, currentUser.id]);
   const [txFilter, setTxFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [confirmDeleteTxId, setConfirmDeleteTxId] = useState(null);
 
   const me = config.members.find((m) => m.id === currentUser.id) || currentUser;
 
-  const visibleTx = useMemo(
-    () => records.transactions.filter((tx) => !tx.private || tx.ownerId === currentUser.id),
-    [records.transactions, currentUser.id]
-  );
-
-  const toUSD = useCallback((tx) => {
-    if (!config.isVenezuela) return tx.amount;
-    return tx.currency === "BS" ? tx.amount / (tx.rate || 1) : tx.amount;
-  }, [config.isVenezuela]);
+  const visibleTx = useMemo(() => expandTransactions(allVisible, "1970-01-01", `${Number(todayISO().slice(0,4))+1}-01-01`, records.exceptions || {}).filter(tx => tx.date && tx.date <= todayISO()), [allVisible, records.exceptions]);
+  const toUSD = useCallback(tx => transactionValue(tx, config.isVenezuela), [config.isVenezuela]);
 
   const latestRate = useMemo(() => {
     if (!records.rates.length) return null;
@@ -824,26 +923,27 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   }, [visibleTx, toUSD]);
 
   const monthKey = todayISO().slice(0, 7);
+  const cycle = periodBounds(todayISO(), "cycle", config.cycleDay || 1);
   const monthTotals = useMemo(() => {
     const sums = { ingreso: 0, egreso: 0 };
-    visibleTx.filter((tx) => tx.date.slice(0, 7) === monthKey).forEach((tx) => {
+    visibleTx.filter((tx) => inPeriod(tx, cycle)).forEach((tx) => {
       if (sums[tx.type] !== undefined) sums[tx.type] += toUSD(tx);
     });
     return sums;
-  }, [visibleTx, toUSD, monthKey]);
+  }, [visibleTx, toUSD, monthKey, config.cycleDay]);
 
   const netWorth = totals.activo - totals.pasivo;
 
   const pieData = useMemo(() => {
     const byCat = {};
-    visibleTx.filter((tx) => tx.type === "egreso" && tx.date.slice(0, 7) === monthKey).forEach((tx) => {
-      byCat[tx.catId] = (byCat[tx.catId] || 0) + toUSD(tx);
+    visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle)).forEach((tx) => {
+      const key = tx.customCategory || tx.catId; byCat[key] = (byCat[key] || 0) + toUSD(tx);
     });
     return Object.entries(byCat).map(([catId, value]) => {
       const cat = CATS.egreso.find((c) => c.id === catId);
       return { name: cat ? (lang === "es" ? cat.es : cat.en) : catId, value: Number(value.toFixed(2)) };
     });
-  }, [visibleTx, toUSD, monthKey, lang]);
+  }, [visibleTx, toUSD, monthKey, lang, config.cycleDay]);
 
   const PIE_COLORS = [C.violet, C.teal, C.gold, C.red, "#60A5FA", C.goldSoft, "#34D399", "#F472B6"];
 
@@ -876,15 +976,16 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const recNeeds = monthTotals.ingreso * (b.needsPct / 100);
   const recWants = monthTotals.ingreso * (b.wantsPct / 100);
   const recSavings = monthTotals.ingreso * (b.savingsPct / 100);
-  const actualNeeds = visibleTx.filter((tx) => tx.type === "egreso" && tx.date.slice(0, 7) === monthKey && effTag(tx) === "necesidad").reduce((s, tx) => s + toUSD(tx), 0);
-  const actualWants = visibleTx.filter((tx) => tx.type === "egreso" && tx.date.slice(0, 7) === monthKey && effTag(tx) === "gusto").reduce((s, tx) => s + toUSD(tx), 0);
-  const actualSavings = visibleTx.filter((tx) => tx.type === "activo" && tx.date.slice(0, 7) === monthKey && effTag(tx) === "ahorro").reduce((s, tx) => s + toUSD(tx), 0);
+  const actualNeeds = visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle) && effTag(tx) === "necesidad").reduce((s, tx) => s + toUSD(tx), 0);
+  const actualWants = visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle) && effTag(tx) === "gusto").reduce((s, tx) => s + toUSD(tx), 0);
+  const actualSavings = visibleTx.filter((tx) => tx.type === "activo" && inPeriod(tx, cycle) && effTag(tx) === "ahorro").reduce((s, tx) => s + toUSD(tx), 0);
   const emergencyFull = emergencyPct >= 100;
 
   const setBudget = (patch) => saveConfig({ ...config, budget: { ...config.budget, ...patch } });
 
   const NAV = [
     { id: "overview", label: t("overview"), icon: LayoutGrid },
+    { id: "calendar", label: lang === "es" ? "Calendario" : "Calendar", icon: Calendar },
     { id: "transactions", label: t("transactions"), icon: Receipt },
     { id: "budget", label: t("budget"), icon: PiggyBank },
     ...(config.isVenezuela ? [{ id: "rates", label: t("rates"), icon: ArrowRightLeft }] : []),
@@ -895,13 +996,17 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     const exists = records.transactions.some((t) => t.id === tx.id);
     const next = exists ? records.transactions.map((t) => (t.id === tx.id ? tx : t)) : [tx, ...records.transactions];
     saveRecords({ ...records, transactions: next });
+    showToast(t("txSaved"));
   };
-  const delTx = (id) => saveRecords({ ...records, transactions: records.transactions.filter((tx) => tx.id !== id) });
-  const addRate = (r) => saveRecords({ ...records, rates: [...records.rates, r] });
-  const delRate = (idx) => saveRecords({ ...records, rates: records.rates.filter((_, i) => i !== idx) });
+  const delTx = (id) => {
+    saveRecords({ ...records, transactions: records.transactions.filter((tx) => tx.id !== id), exceptions: Object.fromEntries(Object.entries(records.exceptions || {}).filter(([key]) => !key.startsWith(`${id}@`))) });
+    showToast(t("txDeleted"));
+  };
+  const addRate = (r) => { saveRecords({ ...records, rates: [...records.rates, r] }); showToast(t("rateSaved")); };
+  const delRate = (idx) => { saveRecords({ ...records, rates: records.rates.filter((_, i) => i !== idx) }); showToast(t("rateDeleted")); };
 
   return (
-    <div className="min-h-screen flex relative" style={{ background: C.bg, ...body }}>
+    <div className="min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
       <div className="fixed -top-60 left-1/3 w-[700px] h-[700px] rounded-full opacity-[0.07] blur-3xl pointer-events-none" style={{ background: C.grad }} />
       {/* Sidebar */}
       <aside className="w-60 shrink-0 hidden md:flex flex-col p-5 relative" style={{ borderRight: `1px solid ${C.border}` }}>
@@ -942,8 +1047,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         <div className="flex md:hidden items-center justify-between mb-4">
           <Logo height={22} />
           <div className="flex items-center gap-2">
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ color: C.muted }}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <button onClick={() => setLang(lang === "es" ? "en" : "es")} style={{ color: C.muted }}><Globe size={16} /></button>
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("themeToggle")} className="p-2 -m-2 rounded-lg" style={{ color: C.muted }}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button>
+            <button onClick={() => setLang(lang === "es" ? "en" : "es")} aria-label={t("langToggle")} className="p-2 -m-2 rounded-lg" style={{ color: C.muted }}><Globe size={16} /></button>
           </div>
         </div>
         <div className="flex md:hidden gap-1.5 mb-5 overflow-x-auto pb-1">
@@ -961,8 +1066,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
+        {tab === "calendar" && <Planning records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={() => {setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
+            <Comparison transactions={visibleTx} config={config} lang={lang} />
             <div>
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("overview")}</h1>
               <p className="text-sm mt-1" style={{ color: C.muted }}>{t("heroSub")}</p>
@@ -970,8 +1077,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { key: "ingreso", label: t("income"), tip: t("incomeTip"), val: monthTotals.ingreso, sub: t("thisMonth") },
-                { key: "egreso", label: t("expenses"), tip: t("expenseTip"), val: monthTotals.egreso, sub: t("thisMonth") },
+                { key: "ingreso", label: t("income"), tip: t("incomeTip"), val: monthTotals.ingreso, sub: `${cycle.start} → ${cycle.end}` },
+                { key: "egreso", label: t("expenses"), tip: t("expenseTip"), val: monthTotals.egreso, sub: `${cycle.start} → ${cycle.end}` },
                 { key: "activo", label: t("assets"), tip: t("assetTip"), val: totals.activo, sub: t("total") },
                 { key: "pasivo", label: t("liabilities"), tip: t("liabilityTip"), val: totals.pasivo, sub: t("total") },
               ].map((card) => {
@@ -1047,6 +1154,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {tab === "transactions" && (
           <div>
+            <label className="block text-sm">{lang === "es" ? "Buscar por descripción, categoría, dependiente, grupo o método" : "Search description, category, beneficiary, group or payment method"}<input value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
             <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("transactions")}</h1>
               <Btn onClick={() => { setModalType("egreso"); setEditingTx(null); }}><Plus size={14} className="inline -mt-0.5 mr-1" />{t("addMovement")}</Btn>
@@ -1061,8 +1169,9 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               <div className="flex-1" />
               {["ingreso", "egreso", "activo", "pasivo"].map((ty) => {
                 const meta = TYPE_META[ty];
+                const label = t(ty === "ingreso" ? "income" : ty === "egreso" ? "expenses" : ty === "activo" ? "assets" : "liabilities");
                 return (
-                  <button key={ty} onClick={() => { setModalType(ty); setEditingTx(null); }} title={ty} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `${meta.color}22`, border: `1px solid ${meta.color}55` }}>
+                  <button key={ty} onClick={() => { setModalType(ty); setEditingTx(null); }} aria-label={`${t("addMovement")} · ${label}`} title={label} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `${meta.color}22`, border: `1px solid ${meta.color}55` }}>
                     <meta.icon size={13} style={{ color: meta.color }} />
                   </button>
                 );
@@ -1083,11 +1192,15 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
             </div>
 
             <Card style={{ padding: 0 }}>
-              {visibleTx.filter((tx) => (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
-                <p className="text-sm py-12 text-center" style={{ color: C.muted }}>{t("noTx")}</p>
+              {allVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
+                <div className="py-12 text-center">
+                  <Receipt size={24} className="mx-auto mb-2" style={{ color: C.muted, opacity: 0.6 }} />
+                  <p className="text-sm" style={{ color: C.muted }}>{t("noTx")}</p>
+                  <p className="text-xs mt-1" style={{ color: C.muted, opacity: 0.8 }}>{t("noTxHint")}</p>
+                </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: C.border }}>
-                  {visibleTx.filter((tx) => (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
+                  {allVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
                     .sort((a, b) => (a.date < b.date ? 1 : -1))
                     .map((tx) => {
                       const cat = CATS[tx.type].find((c) => c.id === tx.catId);
@@ -1101,9 +1214,9 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                             {cat && <cat.icon size={15} style={{ color: meta.color }} />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm truncate" style={{ color: C.text }}>{tx.desc || (cat ? (lang === "es" ? cat.es : cat.en) : "")}</p>
+                            <p className="text-sm truncate" style={{ color: C.text }}>{tx.desc || tx.customCategory || (cat ? (lang === "es" ? cat.es : cat.en) : "")}</p>
                             <p className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: C.muted }}>
-                              {cat ? (lang === "es" ? cat.es : cat.en) : ""} · {tx.date}
+                              {tx.customCategory || (cat ? (lang === "es" ? cat.es : cat.en) : "")} · {tx.date || (lang === "es" ? "Sin fecha" : "Unscheduled")} · {[tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,tx.recurrence ? "↻" : ""].filter(Boolean).join(" · ")}
                               {tx.private && <Lock size={10} />}
                               {rowTag && (
                                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ background: `${TAG_META[rowTag].color}1F`, color: TAG_META[rowTag].color }}>
@@ -1115,12 +1228,15 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                           {owner && <Avatar m={owner} size={20} />}
                           <div className="text-right shrink-0">
                             <p className="text-sm font-medium" style={{ ...mono, color: meta.color }}>
-                              {tx.type === "egreso" || tx.type === "pasivo" ? "-" : "+"}{config.isVenezuela ? `$${fmt(usd)}` : money(tx.amount)}
+                              {tx.type === "egreso" || tx.type === "pasivo" ? "-" : "+"}{config.isVenezuela ? `$${fmt(usd)}` : money(usd)}
                             </p>
-                            {config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)}</p>}
+                            {config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
                           </div>
-                          <button onClick={() => { setModalType(tx.type); setEditingTx(tx); }} className="shrink-0"><Pencil size={14} style={{ color: C.muted }} /></button>
-                          <button onClick={() => delTx(tx.id)} className="shrink-0"><Trash2 size={14} style={{ color: C.muted }} /></button>
+                          <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => { setModalType(tx.type); setEditingTx({...tx, id: uid(), recurrence: null}); }}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
+                          <button onClick={() => { setModalType(tx.type); setEditingTx(tx); }} aria-label={t("editEntryAction")}
+                            className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Pencil size={14} style={{ color: C.muted }} /></button>
+                          <button onClick={() => setConfirmDeleteTxId(tx.id)} aria-label={t("deleteEntry")}
+                            className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Trash2 size={14} style={{ color: C.muted }} /></button>
                         </div>
                       );
                     })}
@@ -1207,17 +1323,26 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "rates" && config.isVenezuela && (
-          <RatesTab lang={lang} t={t} rates={records.rates} addRate={addRate} delRate={delRate} />
+          <CustomRates lang={lang} rates={records.rates} saveRates={rates => saveRecords({...records,rates})} />
         )}
 
         {tab === "settings" && (
-          <SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} />
+          <><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
         )}
       </main>
 
       {modalType && (
         <AddModal lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
           rates={records.rates} editing={editingTx} onClose={() => { setModalType(null); setEditingTx(null); }} onSave={saveTx} />
+      )}
+      {confirmDeleteTxId && (
+        <ConfirmDialog
+          message={t("confirmDeleteTx")}
+          confirmLabel={t("yesDelete")}
+          cancelLabel={t("cancel")}
+          onCancel={() => setConfirmDeleteTxId(null)}
+          onConfirm={() => { delTx(confirmDeleteTxId); setConfirmDeleteTxId(null); }}
+        />
       )}
     </div>
   );
@@ -1227,6 +1352,7 @@ function RatesTab({ lang, t, rates, addRate, delRate }) {
   const C = useC();
   const [date, setDate] = useState(todayISO());
   const [rate, setRate] = useState("");
+  const [confirmIdx, setConfirmIdx] = useState(null);
   const sorted = [...rates].sort((a, b) => (a.date < b.date ? 1 : -1));
   return (
     <div className="space-y-6">
@@ -1251,15 +1377,30 @@ function RatesTab({ lang, t, rates, addRate, delRate }) {
       </Card>
       <Card style={{ padding: 0 }}>
         {sorted.length === 0 ? (
-          <p className="text-sm py-10 text-center" style={{ color: C.muted }}>{t("noRates")}</p>
+          <div className="py-10 text-center">
+            <ArrowRightLeft size={22} className="mx-auto mb-2" style={{ color: C.muted, opacity: 0.6 }} />
+            <p className="text-sm" style={{ color: C.muted }}>{t("noRates")}</p>
+            <p className="text-xs mt-1" style={{ color: C.muted, opacity: 0.8 }}>{t("noRatesHint")}</p>
+          </div>
         ) : sorted.map((r, i) => (
           <div key={i} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i ? `1px solid ${C.border}` : "none" }}>
             <span className="text-sm" style={{ color: C.text }}>{r.date}</span>
             <span className="text-sm" style={{ ...mono, color: C.gold }}>{fmt(r.rate)} Bs</span>
-            <button onClick={() => delRate(rates.indexOf(r))}><Trash2 size={14} style={{ color: C.muted }} /></button>
+            <button onClick={() => setConfirmIdx(rates.indexOf(r))} aria-label={t("deleteEntry")} className="p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors">
+              <Trash2 size={14} style={{ color: C.muted }} />
+            </button>
           </div>
         ))}
       </Card>
+      {confirmIdx !== null && (
+        <ConfirmDialog
+          message={t("confirmDeleteRate")}
+          confirmLabel={t("yesDelete")}
+          cancelLabel={t("cancel")}
+          onCancel={() => setConfirmIdx(null)}
+          onConfirm={() => { delRate(confirmIdx); setConfirmIdx(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -1349,7 +1490,7 @@ function SettingsTab({ lang, t, config, saveConfig, setLang, currentUserId }) {
           <span className="px-3 py-2 rounded-lg text-sm" style={{ background: C.bgSoft, color: C.text, ...mono, letterSpacing: 1 }}>
             {showCode ? config.inviteCode : "•".repeat(config.inviteCode.length)}
           </span>
-          <button onClick={() => setShowCode((s) => !s)} style={{ color: C.muted }}>{showCode ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+          <button onClick={() => setShowCode((s) => !s)} aria-label={showCode ? t("hide") : t("show")} className="p-1.5 -m-1.5 rounded-lg" style={{ color: C.muted }}>{showCode ? <EyeOff size={16} /> : <Eye size={16} />}</button>
         </div>
       </Card>
     </div>
@@ -1438,5 +1579,9 @@ export default function App() {
     />
   );
 
-  return <ThemeContext.Provider value={themeValue}>{screen}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={themeValue}>
+      <ToastProvider>{screen}</ToastProvider>
+    </ThemeContext.Provider>
+  );
 }

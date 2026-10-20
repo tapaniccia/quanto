@@ -1,0 +1,44 @@
+export const iso = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+export const parseDate = (value) => new Date(`${value}T12:00:00`);
+export function periodBounds(date, mode='month', cycleDay=1, offset=0) {
+  const d=parseDate(date); let start, end;
+  const anchor=(y,m)=>new Date(y,m,Math.min(cycleDay,new Date(y,m+1,0).getDate()),12);
+  if(mode==='week') { start=new Date(d); start.setDate(d.getDate()-((d.getDay()+6)%7)+offset*7); end=new Date(start); end.setDate(end.getDate()+7); }
+  else if(mode==='quarter') { start=new Date(d.getFullYear(),Math.floor(d.getMonth()/3)*3+offset*3,1,12); end=new Date(start.getFullYear(),start.getMonth()+3,1,12); }
+  else if(mode==='cycle') { let m=d.getMonth(); if(d<anchor(d.getFullYear(),m))m--; start=anchor(d.getFullYear(),m+offset); end=anchor(d.getFullYear(),m+offset+1); }
+  else { start=new Date(d.getFullYear(),d.getMonth()+offset,1,12); end=new Date(start.getFullYear(),start.getMonth()+1,1,12); }
+  return {start:iso(start),end:iso(end)};
+}
+export const inPeriod=(tx,b)=>!!tx.date&&tx.date>=b.start&&tx.date<b.end;
+export function transactionValue(tx,venezuela) {
+  const fee=Number(tx.feeFixed||0)+Number(tx.amount)*Number(tx.feePercent||0)/100;
+  const total=Number(tx.amount)+(tx.type==='egreso'?fee:tx.type==='ingreso'?-fee:0);
+  return venezuela&&tx.currency==='BS'?total/Number(tx.rate||1):total;
+}
+export function occurrences(tx, start, end) {
+  if(!tx.recurrence||!tx.date) return tx.date>=start&&tx.date<end?[tx]:[];
+  const {every,unit,until}=tx.recurrence;
+  if(!Number.isInteger(every)||every<1)return [];
+  const origin=parseDate(tx.date); let out=[];
+  for(let i=0;i<100000;i++) {
+    let d=new Date(origin);
+    if(unit==='months') {const m=origin.getMonth()+every*i; d=new Date(origin.getFullYear(),m,Math.min(origin.getDate(),new Date(origin.getFullYear(),m+1,0).getDate()),12);}
+    else d.setDate(origin.getDate()+every*i*(unit==='weeks'?7:1));
+    const day=iso(d); if(day>=end||(until&&day>until))break;
+    if(day>=start)out.push({...tx,id:`${tx.id}@${day}`,date:day,seriesId:tx.id});
+  }
+  return out;
+}
+export function expandTransactions(list,start,end,exceptions={}) {
+  return list.flatMap(tx=>{
+    const items=occurrences(tx,start,end);
+    for(const [id,patch] of Object.entries(exceptions)) {
+      if(id.startsWith(`${tx.id}@`) && patch.date>=start && patch.date<end && !items.some(x=>x.id===id)) {
+        const original=id.slice(tx.id.length+1);
+        const d=parseDate(original);d.setDate(d.getDate()+1);
+        const found=occurrences(tx,original,iso(d)).find(x=>x.id===id); if(found)items.push(found);
+      }
+    }
+    return items.map(item=>({...item,...exceptions[item.id]}));
+  }).filter(tx=>!tx.skipped && tx.date>=start && tx.date<end);
+}

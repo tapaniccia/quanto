@@ -1,6 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /public/notifications {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /users/{userId}/notifications/{deviceId} {
+      function owner() { return request.auth != null && request.auth.uid == userId; }
+      function validPrefs() {
+        return request.resource.data.subscription is string && request.resource.data.subscription.size() < 12000
+          && request.resource.data.enabled is bool
+          && request.resource.data.hour is int && request.resource.data.hour >= 0 && request.resource.data.hour < 24
+          && request.resource.data.timeZone is string && request.resource.data.timeZone.size() < 100
+          && request.resource.data.expenses is bool && request.resource.data.income is bool
+          && request.resource.data.cycleClose is bool && request.resource.data.showAmounts is bool
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow read, delete: if owner();
+      allow create: if owner() && deviceId.matches('[0-9a-f]{64}') && validPrefs()
+        && request.resource.data.keys().hasOnly(['subscription','enabled','hour','timeZone','expenses','income','cycleClose','showAmounts','updatedAt']);
+      allow update: if owner() && validPrefs()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['subscription','enabled','hour','timeZone','expenses','income','cycleClose','showAmounts','updatedAt']);
+    }
     match /users/{userId}/data/{key} {
       allow read: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records'];
       allow delete: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records'];

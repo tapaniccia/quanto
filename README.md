@@ -23,3 +23,16 @@ Run `npm ci`, `npm run dev` or `npm run build`. GitHub Actions deploys `dist/` f
 ## Finance controls
 
 Duplicate and recurring transactions, custom categories/tags/beneficiaries/groups, payment methods and fees, custom calendar colors, and named exchange rates. Calendar includes weekdays, month navigation and opening/daily/projected closing balances. Settings controls pay-cycle start day. Comparison supports week, month, quarter and pay cycle. Historical transactions retain their saved exchange rate.
+
+
+## Calendar reminders and optional background push
+
+In-app reminders are active by default and update on opening, focus and every minute. Settings can optionally enable one system notification per local day while the app remains open; permission is requested only after a user action. Local preferences are per account and device.
+
+Background push is prepared but intentionally disabled until `public/notifications` is provisioned by the sender. No service-account credential has been created and no sending schedule is enabled.
+
+To activate later: deploy the owner-only notification rules in `firestore.rules`; configure GitHub Actions secrets `FIREBASE_SERVICE_ACCOUNT` (a dedicated credential for project `quanto-89274`), `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY`; run the **Calendar notifications** workflow manually; verify delivery on a consenting device; then enable its commented hourly schedule. Keep private keys and financial data out of the repository and logs. The sender's administrative credential can read Firestore data and must be restricted to the deployment maintainers. VAPID keys must remain stable across deployments.
+
+Devices explicitly opt in, select a local summary hour and categories, and can hide amounts. Signing out disables this device's reminders for that account. The worker receives Web Push with the app closed; iOS requires adding the app to the Home Screen. Delivery is best effort, depends on browser support and connection, and GitHub schedules can be delayed or disabled after repository inactivity. Transactions lack a paid/unpaid state, so messages describe scheduled dates, not verified unpaid bills. Positive cycle closure uses the accumulated balance at the prior cycle boundary, includes fees and recurrence exceptions, and excludes other local members' private transactions.
+
+No billing plan upgrade or paid Firebase feature is required for this public-repository scheduler. It is not a guaranteed-time alarm service.

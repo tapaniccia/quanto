@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Wallet, TrendingUp, TrendingDown, Landmark, CreditCard, ShieldCheck,
-  Home, Car, Utensils, HeartPulse, GraduationCap, Film, Coins,
+  Home, Car, Utensils, HeartPulse, GraduationCap, Film, Coins, Dog,
   ArrowRightLeft, Users, Lock, Globe, Settings as SettingsIcon, Plus, X,
   Check, Info, Calendar, LogOut, UserPlus, Banknote, Building2, Briefcase,
   Eye, EyeOff, Sparkles, Trash2, PiggyBank, KeyRound, LayoutGrid, Receipt,
@@ -359,6 +359,8 @@ const CATS = {
     { id: "educacion", icon: GraduationCap, es: "Educación", en: "Education", tipEs: "Colegiaturas, cursos, materiales.", tipEn: "Tuition, courses, materials." },
     { id: "entretenimiento", icon: Film, es: "Entretenimiento", en: "Entertainment", tipEs: "Salidas, streaming, hobbies.", tipEn: "Outings, streaming, hobbies." },
     { id: "deudas", icon: CreditCard, es: "Pago de deudas", en: "Debt payments", tipEs: "Abonos a tarjetas o préstamos.", tipEn: "Payments toward cards or loans." },
+    { id: "dogs", icon: Dog, es: "Dogs", en: "Dogs", tipEs: "Alimento, veterinario, cuidados y otros gastos de tus perros.", tipEn: "Food, vet visits, care and other expenses for your dogs." },
+    { id: "business", icon: Briefcase, es: "Business", en: "Business", tipEs: "Herramientas, servicios y otros gastos de tu negocio.", tipEn: "Tools, services and other business expenses." },
     { id: "otro_egreso", icon: Banknote, es: "Otro egreso", en: "Other expense", tipEs: "Cualquier otro gasto.", tipEn: "Any other spending." },
   ],
   activo: [

@@ -49,3 +49,27 @@ export function availableBalance(transactions, venezuela, asOf = iso(new Date())
   const income = sum('ingreso'), expenses = sum('egreso');
   return {income, expenses, balance: income - expenses};
 }
+
+export function shiftCalendarMonth(month, offset) {
+  const date = parseDate(`${month}-01`);
+  date.setMonth(date.getMonth() + offset);
+  return iso(date).slice(0,7);
+}
+export function calendarBalances(transactions, month, venezuela, exceptions = {}) {
+  const bounds = periodBounds(`${month}-01`);
+  const entries = expandTransactions(transactions, '1970-01-01', bounds.end, exceptions);
+  const delta = tx => tx.type === 'ingreso' ? transactionValue(tx,venezuela) : tx.type === 'egreso' ? -transactionValue(tx,venezuela) : 0;
+  const opening = entries.filter(tx => tx.date < bounds.start).reduce((sum,tx) => sum + delta(tx),0);
+  const daily = {};
+  let income=0, expenses=0;
+  for(const tx of entries.filter(tx => inPeriod(tx,bounds))) {
+    daily[tx.date] = (daily[tx.date] || 0) + delta(tx);
+    if(tx.type === 'ingreso') income += transactionValue(tx,venezuela);
+    if(tx.type === 'egreso') expenses += transactionValue(tx,venezuela);
+  }
+  const date = parseDate(bounds.start); let running = opening; const balances = {};
+  while(iso(date) < bounds.end) {
+    const key = iso(date); running += daily[key] || 0; balances[key] = running; date.setDate(date.getDate()+1);
+  }
+  return {opening,income,expenses,closing:running,balances};
+}

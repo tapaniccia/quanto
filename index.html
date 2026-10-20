@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,6 +7,12 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#101610" />
     <meta name="description" content="Organiza tus finanzas, programa tus pagos y consulta tus saldos con Quanto." />
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('quanto:preference:theme') === 'dark' ? 'dark' : 'light';
+        document.documentElement.lang = localStorage.getItem('quanto:preference:lang') === 'en' ? 'en' : 'es';
+      } catch {}
+    </script>
     <title>Quanto — Finanzas familiares</title>
   </head>
   <body>

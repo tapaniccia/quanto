@@ -736,14 +736,14 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type, config, members, currentUser, rates, editing, onClose, onSave }) {
+function AddModal({ lang, type, config, members, currentUser, rates, editing, initialDate, onClose, onSave }) {
   const C = useC();
   const t = (k) => STR[lang][k];
   const cats = CATS[type];
   const [extra, setExtra] = useState({...editing, repeatUnit: editing?.recurrence?.unit || "", repeatEvery: editing?.recurrence?.every || 1, repeatUntil: editing?.recurrence?.until || ""});
   const [catId, setCatId] = useState(editing?.catId || cats[0].id);
   const [desc, setDesc] = useState(editing?.desc || "");
-  const [date, setDate] = useState(editing ? (editing.date || "") : todayISO());
+  const [date, setDate] = useState(editing ? (editing.date || "") : (initialDate ?? todayISO()));
   const [currency, setCurrency] = useState(editing?.currency || (config.isVenezuela ? "USD" : config.currency.code));
   const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
   const [rate, setRate] = useState(editing?.rate ? String(editing.rate) : "");
@@ -815,8 +815,9 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
             <label htmlFor="tx-date" className="text-xs" style={{ color: C.muted }}>{t("date")}</label>
-            <input type="date" id="tx-date" value={date} onChange={(e) => setDate(e.target.value)}
+            <input aria-describedby="tx-date-help" type="date" id="tx-date" value={date} onChange={(e) => setDate(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
+            <p id="tx-date-help" className="text-xs mt-1" style={{color:C.muted}}>{lang==='es'?'Sin fecha: se guarda en pendientes del calendario.':'No date: saves to the calendar backlog.'}</p>
           </div>
           <div>
             <label htmlFor="tx-ownerId" className="text-xs" style={{ color: C.muted }}>{t("owner")}</label>
@@ -902,6 +903,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const [tab, setTab] = useState("overview");
   const [modalType, setModalType] = useState(null);
   const [editingTx, setEditingTx] = useState(null);
+  const [initialDate,setInitialDate]=useState(undefined);
   const [search, setSearch] = useState("");
   const allVisible = useMemo(() => records.transactions.filter(tx => !tx.private || tx.ownerId === currentUser.id), [records.transactions, currentUser.id]);
   const [txFilter, setTxFilter] = useState("all");
@@ -1069,10 +1071,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={() => {setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":undefined);setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
-            <Comparison transactions={visibleTx} config={config} lang={lang} />
+            <Comparison theme={theme} transactions={visibleTx} config={config} lang={lang} />
             <div>
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("overview")}</h1>
               <p className="text-sm mt-1" style={{ color: C.muted }}>{t("heroSub")}</p>
@@ -1351,7 +1353,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
       {modalType && (
         <AddModal lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
-          rates={records.rates} editing={editingTx} onClose={() => { setModalType(null); setEditingTx(null); }} onSave={saveTx} />
+          rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined); }} onSave={saveTx} />
       )}
       {confirmDeleteTxId && (
         <ConfirmDialog

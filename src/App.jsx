@@ -14,6 +14,7 @@ import {
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
 import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
+import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
 
 /* ---------------------------------------------------------------------- */
@@ -114,7 +115,7 @@ const STR = {
     budget: "Presupuesto",
     rates: "Tasas Bs/USD",
     settings: "Ajustes",
-    logout: "Cambiar de usuario",
+    logout: "Cerrar sesión",
     income: "Ingresos",
     expenses: "Egresos",
     assets: "Activos",
@@ -239,7 +240,7 @@ const STR = {
     budget: "Budget",
     rates: "Bs/USD rates",
     settings: "Settings",
-    logout: "Switch user",
+    logout: "Sign out",
     income: "Income",
     expenses: "Expenses",
     assets: "Assets",
@@ -1028,35 +1029,15 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
             </button>
           ))}
         </nav>
-        <div className="mt-auto pt-4 space-y-2">
-          <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <Avatar m={me} size={24} />
-            <span className="text-sm font-medium" style={{ color: C.text }}>{me.name}</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setLang(lang === "es" ? "en" : "es")} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs" style={{ color: C.muted, border: `1px solid ${C.border}` }}>
-              <Globe size={14} /> {lang === "es" ? "EN" : "ES"}
-            </button>
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs" style={{ color: C.muted, border: `1px solid ${C.border}` }}>
-              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />} {theme === "dark" ? t("light") : t("dark")}
-            </button>
-          </div>
-          <button onClick={onLogout} className="w-full flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs" style={{ color: C.muted }}>
-            <LogOut size={14} /> {t("logout")}
-          </button>
-        </div>
       </aside>
 
       {/* Main */}
       <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
-        {/* mobile top bar */}
-        <div className="flex md:hidden items-center justify-between mb-4">
-          <Logo height={22} />
-          <div className="flex items-center gap-2">
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("themeToggle")} className="p-2 -m-2 rounded-lg" style={{ color: C.muted }}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <button onClick={() => setLang(lang === "es" ? "en" : "es")} aria-label={t("langToggle")} className="p-2 -m-2 rounded-lg" style={{ color: C.muted }}><Globe size={16} /></button>
-          </div>
-        </div>
+        <header className="quanto-account-toolbar" aria-label={lang==='es'?'Cuenta y preferencias':'Account and preferences'}>
+          <div className="quanto-mobile-brand md:hidden"><Logo height={28}/></div>
+          <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
+          <div className="quanto-account-actions"><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
+        </header>
         <div className="flex md:hidden gap-1.5 mb-5 overflow-x-auto pb-1">
           {NAV.map((n) => (
             <button key={n.id} onClick={() => setTab(n.id)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap font-medium"
@@ -1092,7 +1073,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 return (
                   <Card key={card.key} tone={card.key}>
                     <div className="flex items-center justify-between mb-3">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${meta.color}22` }}>
+                      <div className="quanto-bare-icon flex items-center justify-center" style={{ background: `${meta.color}22` }}>
                         <meta.icon size={15} style={{ color: meta.color }} />
                       </div>
                       <InfoTip text={card.tip} />
@@ -1193,7 +1174,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 const meta = TYPE_META[ty];
                 const label = t(ty === "ingreso" ? "income" : ty === "egreso" ? "expenses" : ty === "activo" ? "assets" : "liabilities");
                 return (
-                  <button key={ty} onClick={() => { setModalType(ty); setEditingTx(null); }} aria-label={`${t("addMovement")} · ${label}`} title={label} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: `${meta.color}22`, border: `1px solid ${meta.color}55` }}>
+                  <button key={ty} onClick={() => { setModalType(ty); setEditingTx(null); }} aria-label={`${t("addMovement")} · ${label}`} title={label} className="quanto-icon-action w-8 h-8 flex items-center justify-center" style={{ background: `${meta.color}22`, border: `1px solid ${meta.color}55` }}>
                     <meta.icon size={13} style={{ color: meta.color }} />
                   </button>
                 );
@@ -1232,7 +1213,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                       const rowTag = effTag(tx);
                       return (
                         <div key={tx.id} className="quanto-transaction-row flex items-center gap-3 px-4 py-3" style={{ borderLeft:`3px solid ${meta.color}`, borderTop: `1px solid ${C.border}` }}>
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
+                          <div className="quanto-bare-icon flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
                             {cat && <cat.icon size={15} style={{ color: meta.color }} />}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1523,8 +1504,8 @@ function SettingsTab({ lang, t, config, saveConfig, setLang, currentUserId }) {
 /* ---------------------------------------------------------------------- */
 export default function App() {
   useFonts();
-  const [lang, setLang] = useState("es");
-  const [theme, setTheme] = useState("dark");
+  const [lang, setLang] = usePreference("lang");
+  const [theme, setTheme] = usePreference("theme");
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState(null); // null = no household yet
   const [records, setRecords] = useState({ transactions: [], rates: [] });

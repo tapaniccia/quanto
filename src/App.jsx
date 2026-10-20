@@ -870,7 +870,7 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, on
           </div>
         )}
 
-        <ExtraFields value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} />
+        <ExtraFields type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} />
         <p className="text-sm mb-3" style={{color:C.text}}>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</p>
         <p className="text-xs mb-3" style={{color:C.muted}}>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</p>
         <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">

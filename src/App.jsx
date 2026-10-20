@@ -14,19 +14,20 @@ import {
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
 import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
+import Notifications, {LocalReminders} from "./Notifications.jsx";
 
 /* ---------------------------------------------------------------------- */
 /*  Design tokens (dark + light)                                           */
 /* ---------------------------------------------------------------------- */
 const BRAND_GOLD = "#B18F32";
 const BRAND_GREEN = "#0F7C42";
-const BRAND_GRAD = `linear-gradient(135deg, ${BRAND_GREEN} 0%, ${BRAND_GOLD} 100%)`;
+const BRAND_GRAD = BRAND_GREEN;
 
 const DARK = {
   bg: "#0A0B09",
-  bgSoft: "#14160F",
-  card: "rgba(255,255,255,0.035)",
-  card2: "rgba(255,255,255,0.07)",
+  bgSoft: "#101813",
+  card: "#141D19",
+  card2: "#20332A",
   border: "rgba(255,255,255,0.09)",
   gold: "#D8A93F",
   goldSoft: "#EBCB7A",
@@ -34,13 +35,13 @@ const DARK = {
   red: "#E2665A",
   violet: "#6B8896",
   text: "#F5F5F0",
-  muted: "#93917F",
+  muted: "#A7B9AC",
   grad: BRAND_GRAD,
 };
 const LIGHT = {
   bg: "#F4F3ED",
   bgSoft: "#FFFFFF",
-  card: "rgba(255,255,255,0.8)",
+  card: "#FFFFFF",
   card2: "rgba(20,18,10,0.055)",
   border: "rgba(20,18,10,0.10)",
   gold: "#8A6A1E",
@@ -127,7 +128,7 @@ const STR = {
     description: "Descripción",
     category: "Categoría",
     amount: "Monto",
-    owner: "De",
+    owner: "Responsable",
     private: "Privado",
     privateHelp: "Solo tú puedes ver este movimiento. Lo demás se comparte con tu pareja.",
     currency: "Moneda",
@@ -197,7 +198,7 @@ const STR = {
     assetTip: "Lo que posees: efectivo, cuentas, inversiones y bienes.",
     liabilityTip: "Lo que debes: tarjetas, préstamos e hipotecas.",
     netWorthTip: "Activos menos pasivos: tu situación financiera real.",
-    heroSub: "Un solo lugar para ver, en pareja, de dónde viene el dinero y a dónde va.",
+    heroSub: "Un solo lugar para ver de dónde viene tu dinero y a dónde va.",
     confirmDeleteTx: "¿Eliminar este movimiento? No se puede deshacer.",
     confirmDeleteRate: "¿Eliminar esta tasa? No se puede deshacer.",
     yesDelete: "Sí, eliminar",
@@ -436,13 +437,13 @@ function InfoTip({ text }) {
   );
 }
 
-function Card({ children, style, className = "" }) {
+function Card({ children, style, tone, className = "" }) {
   const C = useC();
   return (
     <div
-      className={`rounded-[28px] p-6 backdrop-blur-xl ${className}`}
+      data-tone={tone} className={`quanto-card rounded-[24px] p-6 ${className}`}
       style={{
-        background: C.card,
+        background: tone ? `var(--tone-${tone},${C.card})` : C.card,
         border: `1px solid ${C.border}`,
         boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset, 0 20px 40px -24px rgba(0,0,0,0.35)",
         ...style,
@@ -1011,8 +1012,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const delRate = (idx) => { saveRecords({ ...records, rates: records.rates.filter((_, i) => i !== idx) }); showToast(t("rateDeleted")); };
 
   return (
-    <div className="quanto-app min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
-      <div className="fixed -top-60 left-1/3 w-[700px] h-[700px] rounded-full opacity-[0.07] blur-3xl pointer-events-none" style={{ background: C.grad }} />
+    <div data-theme={theme} data-section={tab} className="quanto-app min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
+
       {/* Sidebar */}
       <aside className="w-60 shrink-0 hidden md:flex flex-col p-5 relative" style={{ borderRight: `1px solid ${C.border}` }}>
         <div className="flex items-center px-1 mb-9">
@@ -1071,10 +1072,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":undefined);setEditingTx(null); setModalType("egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
+        <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":undefined);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
-            <Comparison theme={theme} transactions={visibleTx} config={config} lang={lang} />
             <div>
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("overview")}</h1>
               <p className="text-sm mt-1" style={{ color: C.muted }}>{t("heroSub")}</p>
@@ -1089,7 +1090,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               ].map((card) => {
                 const meta = TYPE_META[card.key];
                 return (
-                  <Card key={card.key}>
+                  <Card key={card.key} tone={card.key}>
                     <div className="flex items-center justify-between mb-3">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${meta.color}22` }}>
                         <meta.icon size={15} style={{ color: meta.color }} />
@@ -1097,7 +1098,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                       <InfoTip text={card.tip} />
                     </div>
                     <p className="text-xs" style={{ color: C.muted }}>{card.label}</p>
-                    <p className="text-xl font-semibold mt-0.5" style={{ ...mono, color: C.text }}>{money(card.val)}</p>
+                    <p className="text-xl font-semibold mt-0.5" style={{ ...mono, color: meta.color }}>{money(card.val)}</p>
                     <p className="text-[11px] mt-0.5" style={{ color: C.muted }}>{card.sub}</p>
                     {config.isVenezuela && latestRate && (
                       <p className="text-[11px] mt-1" style={{ color: C.goldSoft }}>≈ {fmt(card.val * latestRate)} Bs</p>
@@ -1107,7 +1108,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               })}
             </div>
 
-            <Card>
+            <Card tone="ingreso">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-medium" style={{color:C.text}}>{lang === "es" ? "Saldo disponible acumulado" : "Accumulated available balance"}</h2>
@@ -1132,6 +1133,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               </div>
             </Card>
 
+            <Comparison theme={theme} transactions={visibleTx} config={config} lang={lang} />
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("expensesByCategory")}</p>
@@ -1174,7 +1176,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {tab === "transactions" && (
           <div>
-            <label className="block text-sm">{lang === "es" ? "Buscar por descripción, categoría, dependiente, grupo o método" : "Search description, category, beneficiary, group or payment method"}<input value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
+            <label className="quanto-search-field block text-sm">{lang === "es" ? "Buscar movimientos" : "Search transactions"}<input placeholder={lang==='es'?'Ej. supermercado, Dogs, Business o Zelle':'e.g. groceries, Dogs, Business or Zelle'} type="search" value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
             <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("transactions")}</h1>
               <Btn onClick={() => { setModalType("egreso"); setEditingTx(null); }}><Plus size={14} className="inline -mt-0.5 mr-1" />{t("addMovement")}</Btn>
@@ -1229,7 +1231,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                       const usd = toUSD(tx);
                       const rowTag = effTag(tx);
                       return (
-                        <div key={tx.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: `1px solid ${C.border}` }}>
+                        <div key={tx.id} className="quanto-transaction-row flex items-center gap-3 px-4 py-3" style={{ borderLeft:`3px solid ${meta.color}`, borderTop: `1px solid ${C.border}` }}>
                           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
                             {cat && <cat.icon size={15} style={{ color: meta.color }} />}
                           </div>
@@ -1281,10 +1283,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                   { key: "wantsPct", label: t("wants"), tip: t("wantsHelp"), color: C.gold },
                   { key: "savingsPct", label: t("savings"), tip: t("savingsHelp"), color: C.teal },
                 ].map((f) => (
-                  <div key={f.key}>
-                    <label className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{f.label}<InfoTip text={f.tip} /></label>
+                  <div className="quanto-budget-allocation" style={{'--allocation-color':f.color}} key={f.key}>
+                    <label htmlFor={`budget-${f.key}`} className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{f.label}<InfoTip text={f.tip} /></label>
                     <div className="flex items-center gap-2">
-                      <input type="number" min="0" max="100" value={b[f.key]} onChange={(e) => setBudget({ [f.key]: Number(e.target.value) })}
+                      <input id={`budget-${f.key}`} placeholder="0" type="number" min="0" max="100" value={b[f.key]} onChange={(e) => setBudget({ [f.key]: Number(e.target.value) })}
                         className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: f.color, border: `1px solid ${C.border}`, ...mono }} />
                       <span className="text-sm" style={{ color: C.muted }}>%</span>
                     </div>
@@ -1295,8 +1297,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 {t("percentTotal")}: {b.needsPct + b.wantsPct + b.savingsPct}% {(b.needsPct + b.wantsPct + b.savingsPct) !== 100 && `— ${t("mustSum100")}`}
               </p>
               <div className="mt-4">
-                <label className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{t("emergencyMonths")}<InfoTip text={t("emergencyMonthsHelp")} /></label>
-                <input type="range" min="3" max="6" value={b.emergencyMonths} onChange={(e) => setBudget({ emergencyMonths: Number(e.target.value) })} className="w-full max-w-xs" />
+                <label htmlFor="budget-emergency" className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{t("emergencyMonths")}<InfoTip text={t("emergencyMonthsHelp")} /></label>
+                <input id="budget-emergency" type="range" min="3" max="6" value={b.emergencyMonths} onChange={(e) => setBudget({ emergencyMonths: Number(e.target.value) })} className="w-full max-w-xs" />
                 <span className="text-sm ml-2" style={{ ...mono, color: C.gold }}>{b.emergencyMonths}</span>
               </div>
             </Card>
@@ -1347,7 +1349,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "settings" && (
-          <><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
+          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><Notifications lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
         )}
       </main>
 
@@ -1435,8 +1437,7 @@ function SettingsTab({ lang, t, config, saveConfig, setLang, currentUserId }) {
   };
 
   return (
-    <div className="space-y-6 max-w-xl">
-      <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("settings")}</h1>
+    <div className="quanto-settings space-y-6">
 
       <Card>
         <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("language")}</p>
@@ -1467,13 +1468,13 @@ function SettingsTab({ lang, t, config, saveConfig, setLang, currentUserId }) {
           <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("householdCurrency")}</p>
           <div className="flex gap-3">
             <div>
-              <label className="text-xs" style={{ color: C.muted }}>{t("currencySymbol")}</label>
-              <input value={config.currency.symbol} onChange={(e) => saveConfig({ ...config, currency: { ...config.currency, symbol: e.target.value } })}
+              <label htmlFor="settings-symbol" className="text-xs" style={{ color: C.muted }}>{t("currencySymbol")}</label>
+              <input id="settings-symbol" placeholder="$" value={config.currency.symbol} onChange={(e) => saveConfig({ ...config, currency: { ...config.currency, symbol: e.target.value } })}
                 className="block mt-1.5 w-20 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
             </div>
             <div>
-              <label className="text-xs" style={{ color: C.muted }}>{t("currencyCode")}</label>
-              <input value={config.currency.code} onChange={(e) => saveConfig({ ...config, currency: { ...config.currency, code: e.target.value.toUpperCase() } })}
+              <label htmlFor="settings-code" className="text-xs" style={{ color: C.muted }}>{t("currencyCode")}</label>
+              <input id="settings-code" placeholder="USD" maxLength={3} value={config.currency.code} onChange={(e) => saveConfig({ ...config, currency: { ...config.currency, code: e.target.value.toUpperCase() } })}
                 className="block mt-1.5 w-24 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
             </div>
           </div>

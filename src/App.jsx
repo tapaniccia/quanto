@@ -9,11 +9,14 @@ import {
   ArrowRightLeft, Users, Lock, Globe, Settings as SettingsIcon, Plus, X,
   Check, Info, Calendar, LogOut, UserPlus, Banknote, Building2, Briefcase,
   Eye, EyeOff, Sparkles, Trash2, PiggyBank, KeyRound, LayoutGrid, Receipt,
-  Scale, Pencil, Sun, Moon,
+  Scale, Pencil, Sun, Moon, Target,
 } from "lucide-react";
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
-import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance } from "./finance.js";
+import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
+import DebtPlanner from "./DebtPlanner.jsx";
+import BudgetPlanner from "./BudgetPlanner.jsx";
+import {isUsdRate} from "./exchangeRates.js";
 import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
 
@@ -85,7 +88,7 @@ const mono = { fontFamily: "'JetBrains Mono', monospace" };
 const body = { fontFamily: "'Inter', sans-serif" };
 
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => iso(new Date());
 
 /* ---------------------------------------------------------------------- */
 /*  Copy                                                                    */
@@ -368,12 +371,14 @@ const CATS = {
   activo: [
     { id: "efectivo", icon: Wallet, es: "Efectivo", en: "Cash", tipEs: "Dinero físico o en cuentas de uso diario.", tipEn: "Physical cash or everyday spending accounts." },
     { id: "cuenta_bancaria", icon: Landmark, es: "Cuenta bancaria", en: "Bank account", tipEs: "Saldos en cuentas de ahorro o corriente.", tipEn: "Balances in savings or checking accounts." },
+    { id: "ahorro_general", icon: PiggyBank, es: "Ahorro para una meta", en: "Savings goal", tipEs: "Dinero apartado para una meta.", tipEn: "Money set aside for a goal." },
     { id: "fondo_emergencia", icon: ShieldCheck, es: "Fondo de emergencia", en: "Emergency fund", tipEs: "Dinero apartado solo para imprevistos.", tipEn: "Money set aside only for emergencies." },
     { id: "inversion", icon: TrendingUp, es: "Inversiones", en: "Investments", tipEs: "Acciones, fondos, cripto, negocios propios.", tipEn: "Stocks, funds, crypto, your own ventures." },
     { id: "bienes", icon: Building2, es: "Bienes (propiedad / vehículo)", en: "Property / vehicles", tipEs: "Valor de propiedades o vehículos que posees.", tipEn: "Value of property or vehicles you own." },
     { id: "otro_activo", icon: Coins, es: "Otro activo", en: "Other asset", tipEs: "Cualquier otra cosa de valor que posees.", tipEn: "Anything else of value you own." },
   ],
   pasivo: [
+    { id: "cashea", icon: Receipt, es: "Cashea", en: "Cashea", tipEs: "Saldo pendiente de compras en cuotas.", tipEn: "Outstanding balance on installment purchases." },
     { id: "tarjeta", icon: CreditCard, es: "Tarjeta de crédito", en: "Credit card", tipEs: "Saldo pendiente en tarjetas.", tipEn: "Outstanding balance on cards." },
     { id: "prestamo", icon: Banknote, es: "Préstamo", en: "Loan", tipEs: "Deuda de préstamos personales o de estudio.", tipEn: "Personal or student loan debt." },
     { id: "hipoteca", icon: Home, es: "Hipoteca", en: "Mortgage", tipEs: "Saldo pendiente de tu vivienda.", tipEn: "Outstanding balance on your home." },
@@ -387,7 +392,7 @@ const typeMeta = (C) => ({
   pasivo: { icon: Scale, color: C.violet },
 });
 const NEEDS_CATS = ["vivienda", "alimentacion", "salud", "transporte", "deudas"];
-const SAVINGS_CATS = ["fondo_emergencia", "inversion"];
+const SAVINGS_CATS = ["fondo_emergencia", "inversion", "ahorro_general"];
 const MEMBER_COLORS = ["#B18F32", "#0F7C42", "#6B8896", "#C2453A", "#8A6A1E"];
 const EMOJI_OPTIONS = ["🙂", "😎", "🤓", "🥳", "🦊", "🐼", "🐱", "🐶", "🦄", "🐸", "🌟", "🚀", "🌈", "🍀", "🥑", "🦁", "👩", "🧑", "👨", "🐧"];
 
@@ -738,10 +743,12 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type, config, members, currentUser, rates, editing, initialDate, onClose, onSave }) {
+function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave }) {
   const C = useC();
   const t = (k) => STR[lang][k];
-  const cats = CATS[type];
+  const [type,setType]=useState(initialType);
+  const [savingsMode,setSavingsMode]=useState(editing?.type==='activo'&&editing?.tag==='ahorro'&&SAVINGS_CATS.includes(editing?.catId));
+  const cats = savingsMode?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[type];
   const [extra, setExtra] = useState({...editing, repeatUnit: editing?.recurrence?.unit || "", repeatEvery: editing?.recurrence?.every || 1, repeatUntil: editing?.recurrence?.until || ""});
   const [catId, setCatId] = useState(editing?.catId || cats[0].id);
   const [desc, setDesc] = useState(editing?.desc || "");
@@ -763,9 +770,9 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, in
   useEffect(() => {
     if (editing || extra.rateName) return; // preserve explicitly selected and historical rates
     if (config.isVenezuela && currency === "BS") {
-      const sorted = [...rates].filter((r) => r.date <= date).sort((a, b) => (a.date < b.date ? 1 : -1));
-      const nearest = sorted[0] || [...rates].sort((a, b) => (a.date < b.date ? -1 : 1))[0];
-      if (nearest) setRate(String(nearest.rate));
+      const sorted = [...rates].filter((r) => isUsdRate(r)&&r.date <= date).sort((a, b) => (a.date < b.date ? 1 : -1));
+      const nearest = sorted[0];
+      setRate(nearest ? String(nearest.rate) : "");
     }
   }, [currency, date]); // eslint-disable-line
 
@@ -782,7 +789,7 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, in
     onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
       id: editing ? editing.id : uid(), type, catId, desc: desc.trim(), date, currency,
-      amount: amt, rate: usedRate, ownerId, private: isPrivate, tag: showTags ? tag : null,
+      amount: amt, rate: usedRate, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
   };
@@ -793,11 +800,12 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, in
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
-            <h3 className="font-medium" style={{ color: C.text }}>{editing ? t("editEntry") : t("addMovement")} · {t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
+            <h3 className="font-medium" style={{ color: C.text }}>{editing ? t("editEntry") : t("addMovement")} · {savingsMode?t("savings"):t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
           </div>
           <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
 
+        <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={savingsMode?'ahorro':type} onChange={e=>{const saving=e.target.value==='ahorro',next=saving?'activo':e.target.value,list=saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda','Debt']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
         <label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
           {cats.map((c) => (
@@ -855,7 +863,7 @@ function AddModal({ lang, type, config, members, currentUser, rates, editing, in
           )}
         </div>
 
-        {showTags && (
+        {showTags && !savingsMode && (
           <div className="mb-4">
             <label className="text-xs flex items-center" style={{ color: C.muted }}>{t("tagLabel")}<InfoTip text={`${t("needsHelp")} / ${t("wantsHelp")} / ${t("savingsHelp")}`} /></label>
             <div className="flex gap-2 mt-1.5 flex-wrap">
@@ -919,7 +927,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
   const latestRate = useMemo(() => {
     if (!records.rates.length) return null;
-    return [...records.rates].sort((a, b) => (a.date < b.date ? 1 : -1))[0].rate;
+    return [...records.rates].filter(r=>isUsdRate(r)&&r.date<=todayISO()).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.rate || null;
   }, [records.rates]);
 
   const totals = useMemo(() => {
@@ -975,26 +983,12 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
   const money = (v) => `${currSym}${fmt(v)}`;
 
-  /* ---- budget math ---- */
-  const b = config.budget;
-  const emergencyTarget = monthTotals.egreso > 0 ? monthTotals.egreso * b.emergencyMonths : totals.egreso / 6 * b.emergencyMonths;
-  const emergencyCurrent = visibleTx.filter((tx) => tx.type === "activo" && tx.catId === "fondo_emergencia").reduce((s, tx) => s + toUSD(tx), 0);
-  const emergencyPct = emergencyTarget > 0 ? Math.min(100, (emergencyCurrent / emergencyTarget) * 100) : 0;
-  const recNeeds = monthTotals.ingreso * (b.needsPct / 100);
-  const recWants = monthTotals.ingreso * (b.wantsPct / 100);
-  const recSavings = monthTotals.ingreso * (b.savingsPct / 100);
-  const actualNeeds = visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle) && effTag(tx) === "necesidad").reduce((s, tx) => s + toUSD(tx), 0);
-  const actualWants = visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle) && effTag(tx) === "gusto").reduce((s, tx) => s + toUSD(tx), 0);
-  const actualSavings = visibleTx.filter((tx) => tx.type === "activo" && inPeriod(tx, cycle) && effTag(tx) === "ahorro").reduce((s, tx) => s + toUSD(tx), 0);
-  const emergencyFull = emergencyPct >= 100;
-
-  const setBudget = (patch) => saveConfig({ ...config, budget: { ...config.budget, ...patch } });
-
   const NAV = [
     { id: "overview", label: t("overview"), icon: LayoutGrid },
     { id: "calendar", label: lang === "es" ? "Calendario" : "Calendar", icon: Calendar },
     { id: "transactions", label: t("transactions"), icon: Receipt },
     { id: "budget", label: t("budget"), icon: PiggyBank },
+    { id: "planner", label: lang==='es'?'Deudas y metas':'Debts and goals', icon: Target },
     ...(config.isVenezuela ? [{ id: "rates", label: t("rates"), icon: ArrowRightLeft }] : []),
     { id: "settings", label: t("settings"), icon: SettingsIcon },
   ];
@@ -1249,81 +1243,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "budget" && (
-          <div className="space-y-6">
-            <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("budget")}</h1>
-
-            <Card>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-medium flex items-center" style={{ color: C.text }}>{t("budgetRule")}<InfoTip text="50/30/20: 50% necesidades, 30% gustos, 20% ahorro." /></p>
-                <button onClick={() => setBudget({ needsPct: 50, wantsPct: 30, savingsPct: 20 })} className="text-xs" style={{ color: C.gold }}>{t("resetBudget")}</button>
-              </div>
-              <div className="grid sm:grid-cols-3 gap-4">
-                {[
-                  { key: "needsPct", label: t("needs"), tip: t("needsHelp"), color: C.red },
-                  { key: "wantsPct", label: t("wants"), tip: t("wantsHelp"), color: C.gold },
-                  { key: "savingsPct", label: t("savings"), tip: t("savingsHelp"), color: C.teal },
-                ].map((f) => (
-                  <div className="quanto-budget-allocation" style={{'--allocation-color':f.color}} key={f.key}>
-                    <label htmlFor={`budget-${f.key}`} className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{f.label}<InfoTip text={f.tip} /></label>
-                    <div className="flex items-center gap-2">
-                      <input id={`budget-${f.key}`} placeholder="0" type="number" min="0" max="100" value={b[f.key]} onChange={(e) => setBudget({ [f.key]: Number(e.target.value) })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: f.color, border: `1px solid ${C.border}`, ...mono }} />
-                      <span className="text-sm" style={{ color: C.muted }}>%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs mt-3" style={{ color: (b.needsPct + b.wantsPct + b.savingsPct) === 100 ? C.muted : C.red }}>
-                {t("percentTotal")}: {b.needsPct + b.wantsPct + b.savingsPct}% {(b.needsPct + b.wantsPct + b.savingsPct) !== 100 && `— ${t("mustSum100")}`}
-              </p>
-              <div className="mt-4">
-                <label htmlFor="budget-emergency" className="text-xs flex items-center mb-1.5" style={{ color: C.muted }}>{t("emergencyMonths")}<InfoTip text={t("emergencyMonthsHelp")} /></label>
-                <input id="budget-emergency" type="range" min="3" max="6" value={b.emergencyMonths} onChange={(e) => setBudget({ emergencyMonths: Number(e.target.value) })} className="w-full max-w-xs" />
-                <span className="text-sm ml-2" style={{ ...mono, color: C.gold }}>{b.emergencyMonths}</span>
-              </div>
-            </Card>
-
-            <Card>
-              <p className="text-sm font-medium mb-1" style={{ color: C.text }}>{t("recommendedFor")}</p>
-              <p className="text-xs mb-4" style={{ color: C.muted }}>{t("monthlyIncome")}: {money(monthTotals.ingreso)}</p>
-              <div className="space-y-4">
-                {[
-                  { label: t("needs"), rec: recNeeds, act: actualNeeds, color: C.red },
-                  { label: t("wants"), rec: recWants, act: actualWants, color: C.gold },
-                  { label: t("savings"), rec: recSavings, act: actualSavings, color: C.teal },
-                ].map((row) => (
-                  <div key={row.label}>
-                    <div className="flex justify-between text-xs mb-1" style={{ color: C.muted }}>
-                      <span>{row.label}</span>
-                      <span style={{ ...mono }}>{money(row.act)} {t("actual")} / {money(row.rec)} {t("recommended")}</span>
-                    </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ background: C.bgSoft }}>
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, row.rec > 0 ? (row.act / row.rec) * 100 : 0)}%`, background: row.color }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card>
-                <p className="text-sm font-medium mb-3 flex items-center" style={{ color: C.text }}><ShieldCheck size={15} className="mr-1.5" style={{ color: C.gold }} />{t("emergencyFund")}</p>
-                <p className="text-2xl font-semibold" style={{ ...mono, color: C.gold }}>{money(emergencyCurrent)}</p>
-                <p className="text-xs mb-2" style={{ color: C.muted }}>{t("total")}: {money(emergencyTarget)}</p>
-                <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: C.bgSoft }}>
-                  <div className="h-full rounded-full" style={{ width: `${emergencyPct}%`, background: C.gold }} />
-                </div>
-                <p className="text-xs" style={{ color: C.muted }}>{emergencyPct.toFixed(0)}% {t("emergencyProgress")}</p>
-              </Card>
-              <Card>
-                <p className="text-sm font-medium mb-3 flex items-center" style={{ color: C.text }}><Sparkles size={15} className="mr-1.5" style={{ color: C.teal }} />{t("investmentSuggestion")}</p>
-                <p className="text-2xl font-semibold" style={{ ...mono, color: C.teal }}>{money(emergencyFull ? recSavings : 0)}</p>
-                <p className="text-xs mt-2 leading-relaxed" style={{ color: C.muted }}>{emergencyFull ? t("investHelpFull") : t("investHelpPartial")}</p>
-              </Card>
-            </div>
-          </div>
-        )}
+        {tab === "budget" && <BudgetPlanner records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
+        {tab === "planner" && <DebtPlanner records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme}/>}
 
         {tab === "rates" && config.isVenezuela && (
           <CustomRates lang={lang} rates={records.rates} saveRates={rates => saveRecords({...records,rates})} />

@@ -1,6 +1,6 @@
-import {iso,parseDate,periodBounds,inPeriod,expandTransactions,transactionValue} from './finance.js';
+import {isExpense,iso,parseDate,periodBounds,inPeriod,expandTransactions,transactionValue} from './finance.js';
 const cents=n=>Math.max(0,Math.round((Number(n)||0)*100));
-export function cycleBaseline(records,config,today){const bounds=periodBounds(today,'cycle',config.cycleDay||1);const entries=expandTransactions(records.transactions,bounds.start,bounds.end,records.exceptions||{}).filter(t=>t.date<=today);const sum=type=>entries.filter(t=>t.type===type).reduce((n,t)=>n+transactionValue(t,config.isVenezuela),0);return {...bounds,income:sum('ingreso'),expenses:sum('egreso')};}
+export function cycleBaseline(records,config,today){const bounds=periodBounds(today,'cycle',config.cycleDay||1);const entries=expandTransactions(records.transactions,bounds.start,bounds.end,records.exceptions||{}).filter(t=>t.date<=today);const sum=type=>entries.filter(t=>(type==='egreso'?isExpense(t):t.type===type)).reduce((n,t)=>n+transactionValue(t,config.isVenezuela),0);return {...bounds,income:sum('ingreso'),expenses:sum('egreso')};}
 export function projectPlan({debts=[],goals=[],income=0,expenses=0,reserve=0,debtShare=60,strategy='due',start,cycleDay=1,horizon=24}){
  const capacity=Math.max(0,cents(income)-cents(expenses)-cents(reserve));
  const ds=debts.map(d=>({...d,left:cents(d.balance),installmentCents:cents(d.installment),due:d.nextDue,completed:null}));

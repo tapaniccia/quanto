@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useContext, createContext } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useContext, createContext, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
   ResponsiveContainer, CartesianGrid,
@@ -12,10 +12,12 @@ import {
   Scale, Pencil, Sun, Moon, Target,
 } from "lucide-react";
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
-import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso } from "./finance.js";
+import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
 import DebtPlanner from "./DebtPlanner.jsx";
 import BudgetPlanner from "./BudgetPlanner.jsx";
+import TransactionRate, {RateHistorySync} from "./TransactionRate.jsx";
+import {mergeRateHistory} from "./exchangeRates.js";
 import {isUsdRate} from "./exchangeRates.js";
 import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
@@ -122,7 +124,7 @@ const STR = {
     income: "Ingresos",
     expenses: "Egresos",
     assets: "Activos",
-    liabilities: "Pasivos",
+    liabilities: "Deudas / cuotas",
     netWorth: "Patrimonio neto",
     thisMonth: "este mes",
     total: "total",
@@ -200,8 +202,8 @@ const STR = {
     incomeTip: "Dinero que entra: salario, negocio, inversiones u otros.",
     expenseTip: "Dinero que sale: todo lo que gastas.",
     assetTip: "Lo que posees: efectivo, cuentas, inversiones y bienes.",
-    liabilityTip: "Lo que debes: tarjetas, préstamos e hipotecas.",
-    netWorthTip: "Activos menos pasivos: tu situación financiera real.",
+    liabilityTip: "Deudas registradas como egresos; ya están incluidas en gastos.",
+    netWorthTip: "Disponible más activos registrados. Las deudas/cuotas ya se restaron como egresos. No dupliques saldos entre activos e ingresos/capital.",
     heroSub: "Un solo lugar para ver de dónde viene tu dinero y a dónde va.",
     confirmDeleteTx: "¿Eliminar este movimiento? No se puede deshacer.",
     confirmDeleteRate: "¿Eliminar esta tasa? No se puede deshacer.",
@@ -247,7 +249,7 @@ const STR = {
     income: "Income",
     expenses: "Expenses",
     assets: "Assets",
-    liabilities: "Liabilities",
+    liabilities: "Debt / installments",
     netWorth: "Net worth",
     thisMonth: "this month",
     total: "total",
@@ -325,8 +327,8 @@ const STR = {
     incomeTip: "Money coming in: salary, business, investments, or other.",
     expenseTip: "Money going out: everything you spend.",
     assetTip: "What you own: cash, accounts, investments, and property.",
-    liabilityTip: "What you owe: cards, loans, and mortgages.",
-    netWorthTip: "Assets minus liabilities: your real financial position.",
+    liabilityTip: "Debt entries recorded as outflows; already included in expenses.",
+    netWorthTip: "Available cash plus recorded assets. Debt installments already reduce cash. Do not duplicate assets and income/capital balances.",
     heroSub: "One place to see, together, where the money comes from and where it goes.",
     confirmDeleteTx: "Delete this entry? This can't be undone.",
     confirmDeleteRate: "Delete this rate? This can't be undone.",
@@ -355,6 +357,7 @@ const CATS = {
     { id: "negocio", icon: TrendingUp, es: "Freelance / Negocio", en: "Freelance / Business", tipEs: "Ingresos variables de tu propio trabajo o negocio.", tipEn: "Variable income from your own work or business." },
     { id: "inv_ingreso", icon: PiggyBank, es: "Rendimiento de inversión", en: "Investment returns", tipEs: "Dividendos, intereses o ganancias de tus inversiones.", tipEn: "Dividends, interest, or gains from your investments." },
     { id: "otro_ingreso", icon: Coins, es: "Otro ingreso", en: "Other income", tipEs: "Cualquier otro dinero que entra.", tipEn: "Any other money coming in." },
+    { id: "aporte_capital", icon: Landmark, es: "Aporte de capital", en: "Capital contribution", tipEs: "Dinero propio previo que incorporas al saldo. No vuelvas a registrarlo como activo.", tipEn: "Existing own money added to your balance. Do not record it again as an asset." },
   ],
   egreso: [
     { id: "vivienda", icon: Home, es: "Vivienda", en: "Housing", tipEs: "Alquiler, cuota, servicios, mantenimiento.", tipEn: "Rent, mortgage payment, utilities, upkeep." },
@@ -367,6 +370,7 @@ const CATS = {
     { id: "dogs", icon: Dog, es: "Dogs", en: "Dogs", tipEs: "Alimento, veterinario, cuidados y otros gastos de tus perros.", tipEn: "Food, vet visits, care and other expenses for your dogs." },
     { id: "business", icon: Briefcase, es: "Business", en: "Business", tipEs: "Herramientas, servicios y otros gastos de tu negocio.", tipEn: "Tools, services and other business expenses." },
     { id: "otro_egreso", icon: Banknote, es: "Otro egreso", en: "Other expense", tipEs: "Cualquier otro gasto.", tipEn: "Any other spending." },
+    { id: "retiro_capital", icon: Landmark, es: "Retiro de capital", en: "Capital withdrawal", tipEs: "Dinero que retiras de este registro.", tipEn: "Money withdrawn from this ledger." },
   ],
   activo: [
     { id: "efectivo", icon: Wallet, es: "Efectivo", en: "Cash", tipEs: "Dinero físico o en cuentas de uso diario.", tipEn: "Physical cash or everyday spending accounts." },
@@ -378,11 +382,11 @@ const CATS = {
     { id: "otro_activo", icon: Coins, es: "Otro activo", en: "Other asset", tipEs: "Cualquier otra cosa de valor que posees.", tipEn: "Anything else of value you own." },
   ],
   pasivo: [
-    { id: "cashea", icon: Receipt, es: "Cashea", en: "Cashea", tipEs: "Saldo pendiente de compras en cuotas.", tipEn: "Outstanding balance on installment purchases." },
-    { id: "tarjeta", icon: CreditCard, es: "Tarjeta de crédito", en: "Credit card", tipEs: "Saldo pendiente en tarjetas.", tipEn: "Outstanding balance on cards." },
-    { id: "prestamo", icon: Banknote, es: "Préstamo", en: "Loan", tipEs: "Deuda de préstamos personales o de estudio.", tipEn: "Personal or student loan debt." },
-    { id: "hipoteca", icon: Home, es: "Hipoteca", en: "Mortgage", tipEs: "Saldo pendiente de tu vivienda.", tipEn: "Outstanding balance on your home." },
-    { id: "otro_pasivo", icon: Coins, es: "Otro pasivo", en: "Other liability", tipEs: "Cualquier otra deuda.", tipEn: "Any other debt." },
+    { id: "cashea", icon: Receipt, es: "Cashea", en: "Cashea", tipEs: "Pago de una compra en cuotas; se incluye en egresos.", tipEn: "Installment purchase payment; included in outflows." },
+    { id: "tarjeta", icon: CreditCard, es: "Tarjeta de crédito", en: "Credit card", tipEs: "Pago o cuota de una tarjeta.", tipEn: "Card payment or installment." },
+    { id: "prestamo", icon: Banknote, es: "Préstamo", en: "Loan", tipEs: "Pago de un préstamo personal o de estudio.", tipEn: "Personal or student loan payment." },
+    { id: "hipoteca", icon: Home, es: "Hipoteca", en: "Mortgage", tipEs: "Pago o cuota de tu vivienda.", tipEn: "Home loan payment or installment." },
+    { id: "otro_pasivo", icon: Coins, es: "Otro pasivo", en: "Other liability", tipEs: "Pago de otro compromiso; se incluye en egresos.", tipEn: "Payment of another commitment; included in outflows." },
   ],
 };
 const typeMeta = (C) => ({
@@ -743,12 +747,13 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave }) {
+function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates }) {
   const C = useC();
   const t = (k) => STR[lang][k];
-  const [type,setType]=useState(initialType);
-  const [savingsMode,setSavingsMode]=useState(editing?.type==='activo'&&editing?.tag==='ahorro'&&SAVINGS_CATS.includes(editing?.catId));
-  const cats = savingsMode?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[type];
+  const [type,setType]=useState(initialType==='capital'?'ingreso':initialType==='ahorro'?'activo':initialType);
+  const [capitalMode,setCapitalMode]=useState(initialType==='capital'||editing?.catId==='aporte_capital');
+  const [savingsMode,setSavingsMode]=useState(initialType==='ahorro'||(editing?.type==='activo'&&editing?.tag==='ahorro'&&SAVINGS_CATS.includes(editing?.catId)));
+  const cats = capitalMode?CATS.ingreso.filter(c=>c.id==='aporte_capital'):savingsMode?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[type];
   const [extra, setExtra] = useState({...editing, repeatUnit: editing?.recurrence?.unit || "", repeatEvery: editing?.recurrence?.every || 1, repeatUntil: editing?.recurrence?.until || ""});
   const [catId, setCatId] = useState(editing?.catId || cats[0].id);
   const [desc, setDesc] = useState(editing?.desc || "");
@@ -767,20 +772,11 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
     if (!tagTouched) setTagRaw(suggestTag(type, catId));
   }, [catId]); // eslint-disable-line
 
-  useEffect(() => {
-    if (editing || extra.rateName) return; // preserve explicitly selected and historical rates
-    if (config.isVenezuela && currency === "BS") {
-      const sorted = [...rates].filter((r) => isUsdRate(r)&&r.date <= date).sort((a, b) => (a.date < b.date ? 1 : -1));
-      const nearest = sorted[0];
-      setRate(nearest ? String(nearest.rate) : "");
-    }
-  }, [currency, date]); // eslint-disable-line
-
-  useEffect(() => { if (extra.selectedRate) setRate(String(extra.selectedRate)); }, [extra.selectedRate]);
+  const handleRateSelection=useCallback(patch=>{setRate(patch.rate);setExtra(previous=>({...previous,...patch}));},[]);
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
   const meta = TYPE_META[type];
-  const canSave = Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
+  const canSave = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
   const save = () => {
     if (!canSave) return;
@@ -789,7 +785,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
     onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
       id: editing ? editing.id : uid(), type, catId, desc: desc.trim(), date, currency,
-      amount: amt, rate: usedRate, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
+      amount: amt, rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
   };
@@ -805,7 +801,8 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
 
-        <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={savingsMode?'ahorro':type} onChange={e=>{const saving=e.target.value==='ahorro',next=saving?'activo':e.target.value,list=saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda','Debt']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
+        <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
+        <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p>
         <label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
           {cats.map((c) => (
@@ -854,14 +851,8 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
             <input type="number" min="0" step="0.01" id="tx-amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
           </div>
-          {config.isVenezuela && currency === "BS" && (
-            <div>
-              <label htmlFor="tx-rate" className="text-xs" style={{ color: C.muted }}>{t("rateUsed")}</label>
-              <input type="number" min="0" step="0.01" id="tx-rate" value={rate} onChange={(e) => setRate(e.target.value)}
-                className="w-full mt-1.5 px-2 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
-            </div>
-          )}
         </div>
+        {config.isVenezuela&&currency==='BS'&&<><TransactionRate date={date} rates={rates} editing={editing} onChange={handleRateSelection} onHistory={onImportRates} lang={lang}/>{Number(rate)>0&&Number(amount)>0&&<p className="text-sm my-3" style={{color:C.text}}>{lang==='es'?'Equivalente antes de comisiones:':'Equivalent before fees:'} <strong>{(Number(amount)/Number(rate)).toFixed(2)} USD</strong>{extra.rateReference&&extra.rateReference!=='USD'&&Number(extra.referenceRate)>0&&<> · {(Number(amount)/Number(extra.referenceRate)).toFixed(2)} {extra.rateReference}</>}</p>}</>}
 
         {showTags && !savingsMode && (
           <div className="mb-4">
@@ -905,6 +896,10 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
 /*  Dashboard                                                               */
 /* ---------------------------------------------------------------------- */
 function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, currentUser, onLogout }) {
+  const latestRecords=useRef(records);latestRecords.current=records;
+  const importRateHistory=useCallback(incoming=>{const current=latestRecords.current,merged=mergeRateHistory(current.rates||[],incoming);if(JSON.stringify(merged)!==JSON.stringify(current.rates||[])){const next={...current,rates:merged};latestRecords.current=next;saveRecords(next);}},[saveRecords]);
+  const historyYears=[...new Set([todayISO().slice(0,4),...records.transactions.filter(tx=>tx.date&&tx.date<=todayISO()).map(tx=>tx.date.slice(0,4))])].sort().join(',');
+
   const { C, theme, setTheme } = useThemeCtx();
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
@@ -941,21 +936,21 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const monthTotals = useMemo(() => {
     const sums = { ingreso: 0, egreso: 0 };
     visibleTx.filter((tx) => inPeriod(tx, cycle)).forEach((tx) => {
-      if (sums[tx.type] !== undefined) sums[tx.type] += toUSD(tx);
+      if (tx.type === "ingreso") sums.ingreso += toUSD(tx); else if(isExpense(tx)) sums.egreso += toUSD(tx);
     });
     return sums;
   }, [visibleTx, toUSD, monthKey, config.cycleDay]);
 
-  const netWorth = totals.activo - totals.pasivo;
+  const netWorth = positionSummary(visibleTx,config.isVenezuela).netWorth;
   const available = useMemo(() => availableBalance(visibleTx, config.isVenezuela, todayISO()), [visibleTx, config.isVenezuela]);
 
   const pieData = useMemo(() => {
     const byCat = {};
-    visibleTx.filter((tx) => tx.type === "egreso" && inPeriod(tx, cycle)).forEach((tx) => {
+    visibleTx.filter((tx) => isExpense(tx) && inPeriod(tx, cycle)).forEach((tx) => {
       const key = tx.customCategory || tx.catId; byCat[key] = (byCat[key] || 0) + toUSD(tx);
     });
     return Object.entries(byCat).map(([catId, value]) => {
-      const cat = CATS.egreso.find((c) => c.id === catId);
+      const cat = [...CATS.egreso,...CATS.pasivo].find((c) => c.id === catId);
       return { name: cat ? (lang === "es" ? cat.es : cat.en) : catId, value: Number(value.toFixed(2)) };
     });
   }, [visibleTx, toUSD, monthKey, lang, config.cycleDay]);
@@ -971,7 +966,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       let inc = 0, exp = 0;
       visibleTx.filter((tx) => tx.date.slice(0, 7) === key).forEach((tx) => {
         if (tx.type === "ingreso") inc += toUSD(tx);
-        if (tx.type === "egreso") exp += toUSD(tx);
+        if (isExpense(tx)) exp += toUSD(tx);
       });
       out.push({ month: label, [t("income")]: Number(inc.toFixed(2)), [t("expenses")]: Number(exp.toFixed(2)) });
     }
@@ -988,7 +983,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     { id: "calendar", label: lang === "es" ? "Calendario" : "Calendar", icon: Calendar },
     { id: "transactions", label: t("transactions"), icon: Receipt },
     { id: "budget", label: t("budget"), icon: PiggyBank },
-    { id: "planner", label: lang==='es'?'Deudas y metas':'Debts and goals', icon: Target },
+    { id: "planner", label: lang==='es'?'Deudas':'Debts', icon: CreditCard },
+    { id: "goals", label: lang==='es'?'Metas':'Goals', icon: Target },
     ...(config.isVenezuela ? [{ id: "rates", label: t("rates"), icon: ArrowRightLeft }] : []),
     { id: "settings", label: t("settings"), icon: SettingsIcon },
   ];
@@ -1047,6 +1043,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
+        {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
         <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
         {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":undefined);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
@@ -1095,7 +1092,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 <p>{lang === "es" ? "Ingresos acumulados" : "Accumulated income"}: <strong style={{color:C.teal}}>{money(available.income)}</strong></p>
                 <p>{lang === "es" ? "Gastos acumulados" : "Accumulated expenses"}: <strong style={{color:C.red}}>{money(available.expenses)}</strong></p>
               </div>
-              <p className="text-xs mt-3 leading-relaxed" style={{color:C.muted}}>{lang === "es" ? "Ingresos menos gastos registrados hasta hoy, incluyendo comisiones. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Income minus expenses recorded through today, including fees. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</p>
+              <p className="text-xs mt-3 leading-relaxed" style={{color:C.muted}}>{lang === "es" ? "Entradas menos egresos (incluidas deudas/cuotas y comisiones) y ahorro apartado hasta hoy. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Inflows minus outflows (including debt/installments and fees) and savings set aside through today. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</p>
             </Card>
 
             <Card>
@@ -1228,6 +1225,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                               {tx.type === "egreso" || tx.type === "pasivo" ? "-" : "+"}{config.isVenezuela ? `$${fmt(usd)}` : money(usd)}
                             </p>
                             {config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
+                            {config.isVenezuela&&tx.currency==='BS'&&tx.rateReference&&tx.rateReference!=='USD'&&tx.referenceRate>0&&<p className="text-[11px]" style={{color:C.muted}}>{fmt(usd*Number(tx.rate)/Number(tx.referenceRate))} {tx.rateReference}</p>}
                           </div>
                           <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => { setModalType(tx.type); setEditingTx({...tx, id: uid(), recurrence: null}); }}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
                           <button onClick={() => { setModalType(tx.type); setEditingTx(tx); }} aria-label={t("editEntryAction")}
@@ -1244,7 +1242,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "budget" && <BudgetPlanner records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
-        {tab === "planner" && <DebtPlanner records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme}/>}
+        {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme}/>}
 
         {tab === "rates" && config.isVenezuela && (
           <CustomRates lang={lang} rates={records.rates} saveRates={rates => saveRecords({...records,rates})} />
@@ -1256,7 +1254,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       </main>
 
       {modalType && (
-        <AddModal lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
+        <AddModal onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
           rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined); }} onSave={saveTx} />
       )}
       {confirmDeleteTxId && (

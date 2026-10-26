@@ -749,7 +749,7 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate }) {
+function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate, onDuplicate, isCopy, onEditSeries }) {
   const C = useC();
   const t = (k) => STR[lang][k];
   const [type,setType]=useState(initialType==='capital'?'ingreso':initialType==='ahorro'?'activo':initialType);
@@ -786,7 +786,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
   const validOrdinary = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
   const validSettlement=!editing?.cashea||!settlement.paid||(settlement.date&&settlement.date<=todayISO()&&settlement.date>=editing.cashea.purchaseDate&&Number.isFinite(settlement.effectiveRate)&&settlement.effectiveRate>0);
-  const canSave=splitCashea?!!casheaPreview:validOrdinary&&validSettlement;
+  const canSave=(splitCashea?!!casheaPreview:validOrdinary&&validSettlement)&&(!editing?.seriesId||!!date);
   const save = () => {
     if (!canSave) return;
     if(splitCashea){
@@ -810,7 +810,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
-            <h3 className="font-medium" style={{ color: C.text }}>{editing ? t("editEntry") : t("addMovement")} · {savingsMode?t("savings"):t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
+            <h3 className="font-medium" style={{ color: C.text }}>{isCopy ? (lang==='es'?'Nueva copia':'New copy') : editing ? t("editEntry") : t("addMovement")} · {savingsMode?t("savings"):t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
           </div>
           <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
@@ -842,7 +842,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           </div>
           <div>
             <label htmlFor="tx-ownerId" className="text-xs" style={{ color: C.muted }}>{t("owner")}</label>
-            <select id="tx-ownerId" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
+            <select id="tx-ownerId" disabled={!!editing?.seriesId} value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }}>
               {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
@@ -895,14 +895,19 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
         <p className="text-sm mb-3" style={{color:C.text}}>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</p>
         <p className="text-xs mb-3" style={{color:C.muted}}>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</p>
         <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
-          <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+          <input type="checkbox" disabled={!!editing?.seriesId} checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
           <span className="text-sm flex items-center" style={{ color: C.text }}><Lock size={12} className="mr-1" style={{ color: C.muted }} />{t("private")}</span>
           <InfoTip text={t("privateHelp")} />
         </label>
 
+        {isCopy&&<p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Copia independiente. Ajusta la fecha y guarda para agregarla; no repite la serie ni el plan Cashea.':'Independent copy. Adjust the date and save to add it; it does not repeat the series or Cashea plan.'}</p>}
+        {editing?.seriesId&&<p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Los cambios se aplican solo a esta fecha. Para cambiar responsable o privacidad, usa Editar toda la serie.':'Changes apply only to this occurrence. Use Edit entire series to change owner or privacy.'}</p>}
+        {isDebtOrCashea({...extra,type,catId})&&!editing?.cashea&&<label className="flex gap-2 mb-4"><input type="checkbox" checked={!!extra.debtPaid} onChange={e=>setExtra({...extra,debtPaid:e.target.checked})}/>{lang==='es'?'Ya pagué esta deuda / cuota':'I have paid this debt / installment'}</label>}
+        {onEditSeries&&<button type="button" onClick={onEditSeries} className="w-full rounded-lg px-3 py-3 mb-4" style={{color:C.text,border:`1px solid ${C.border}`}}>{lang==='es'?'Editar toda la serie':'Edit entire series'}</button>}
+        {onDuplicate&&<button type="button" onClick={onDuplicate} className="w-full rounded-lg px-3 py-3 mb-4" style={{color:C.text,border:`1px solid ${C.border}`,minHeight:48}}>{lang==='es'?'Duplicar transacción':'Duplicate transaction'}</button>}
         {onDelete&&<div className="mb-4 space-y-2" style={{borderTop:`1px solid ${C.border}`,paddingTop:16}}>
           {onDeleteOccurrence&&<button type="button" onClick={onDeleteOccurrence} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{lang==='es'?`Eliminar solo el ${occurrenceDate}`:`Delete only ${occurrenceDate}`}</button>}
-          <button type="button" onClick={onDelete} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{editing?.recurrence?(lang==='es'?'Eliminar toda la serie':'Delete entire series'):(lang==='es'?'Eliminar transacción':'Delete transaction')}</button>
+          <button type="button" onClick={onDelete} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{(editing?.recurrence||editing?.seriesId)?(lang==='es'?'Eliminar toda la serie':'Delete entire series'):(lang==='es'?'Eliminar transacción':'Delete transaction')}</button>
         </div>}
         <div className="flex gap-2">
           <Btn variant="ghost" onClick={onClose} className="flex-1">{t("cancel")}</Btn>
@@ -932,6 +937,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const [initialDate,setInitialDate]=useState(undefined);
   const [search, setSearch] = useState("");
   const allVisible = useMemo(() => records.transactions.filter(tx => !tx.private || tx.ownerId === currentUser.id), [records.transactions, currentUser.id]);
+  const [listMonth,setListMonth]=useState(todayISO().slice(0,7));
+  const listVisible=useMemo(()=>{const b=periodBounds(`${listMonth}-01`);return [...expandTransactions(allVisible,b.start,b.end,records.exceptions||{}),...allVisible.filter(tx=>!tx.date)];},[allVisible,records.exceptions,listMonth]);
   const [txFilter, setTxFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState(null);
@@ -1013,12 +1020,14 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   ];
 
   const saveTx = (input) => {
-    const payments=Array.isArray(input)?input:[input],byId=new Map(payments.map(tx=>[tx.id,tx]));
+    const inputs=Array.isArray(input)?input:[input],payments=inputs.filter(tx=>!tx.seriesId),byId=new Map(payments.map(tx=>[tx.id,tx]));
     const current=latestRecords.current;
     const next=[...payments.filter(tx=>!current.transactions.some(old=>old.id===tx.id)),...current.transactions.map(tx=>byId.get(tx.id)||tx)];
-    const value={...current,transactions:next};latestRecords.current=value;saveRecords(value);
+    const exceptions={...current.exceptions};for(const tx of inputs.filter(tx=>tx.seriesId)){const {recurrence,repeatUnit,repeatEvery,repeatUntil,...patch}=tx;exceptions[tx.id]={...exceptions[tx.id],...patch};}const value={...current,transactions:next,exceptions};latestRecords.current=value;saveRecords(value);
     showToast(Array.isArray(input)?`${payments.length} ${lang==='es'?'pagos Cashea guardados.':'Cashea payments saved.'}`:t('txSaved'));
   };
+  const openTx=tx=>{setCalendarOccurrence(tx.seriesId?tx:null);setInitialDate(undefined);setEditingTx(tx.seriesId?{...tx,recurrence:null,repeatUnit:''}:tx);setModalType(tx.type);};
+  const duplicateTx=tx=>{const {seriesId,skipped,cashea,casheaSettlement,debtPaid,repeatUnit,repeatEvery,repeatUntil,...copy}=tx;setCalendarOccurrence(null);setInitialDate(undefined);setEditingTx({...copy,id:uid(),recurrence:null,repeatUnit:'',casheaSettlement:null,debtPaid:false});setModalType(tx.type);};
   const delTx = (id) => {
     const current=latestRecords.current;
     const next={ ...current, transactions: current.transactions.filter((tx) => tx.id !== id), exceptions: Object.fromEntries(Object.entries(current.exceptions || {}).filter(([key]) => !key.startsWith(`${id}@`))) };latestRecords.current=next;saveRecords(next);
@@ -1070,7 +1079,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
         <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => {setCalendarOccurrence(occurrence||null);setEditingTx(tx); setModalType(tx.type);}} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <div>
@@ -1210,8 +1219,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               ))}
             </div>
 
+            <label className="flex gap-3 items-center mb-4">{lang==='es'?'Mes de los movimientos':'Transaction month'}<input type="month" value={listMonth} onChange={e=>{if(e.target.value)setListMonth(e.target.value);}} style={{background:C.card,color:C.text,border:`1px solid ${C.border}`,padding:10,borderRadius:8}}/></label>
+            <p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Mismos movimientos y fechas que el calendario, incluidas las recurrencias. Los pendientes sin fecha también aparecen aquí.':'Same transactions and dates as the calendar, including recurring occurrences. Undated transactions appear here too.'}</p>
             <Card style={{ padding: 0 }}>
-              {allVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
+              {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
                 <div className="py-12 text-center">
                   <Receipt size={24} className="mx-auto mb-2" style={{ color: C.muted, opacity: 0.6 }} />
                   <p className="text-sm" style={{ color: C.muted }}>{t("noTx")}</p>
@@ -1219,7 +1230,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: C.border }}>
-                  {allVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
+                  {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
                     .sort((a, b) => (a.date < b.date ? 1 : -1))
                     .map((tx) => {
                       const cat = CATS[tx.type].find((c) => c.id === tx.catId);
@@ -1253,10 +1264,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                             <CasheaAmount tx={tx} rates={records.rates} lang={lang}/>{config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
                             {config.isVenezuela&&tx.currency==='BS'&&tx.rateReference&&tx.rateReference!=='USD'&&tx.referenceRate>0&&<p className="text-[11px]" style={{color:C.muted}}>{fmt(usd*Number(tx.rate)/Number(tx.referenceRate))} {tx.rateReference}</p>}
                           </div>
-                          <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => { setModalType(tx.type); setEditingTx({...tx, id: uid(), recurrence: null, cashea:undefined,casheaSettlement:null}); }}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
-                          <button onClick={() => { setModalType(tx.type); setEditingTx(tx); }} aria-label={t("editEntryAction")}
+                          <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => duplicateTx(tx)}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
+                          <button onClick={() => openTx(tx)} aria-label={t("editEntryAction")}
                             className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Pencil size={14} style={{ color: C.muted }} /></button>
-                          <button onClick={() => setConfirmDeleteTxId(tx.id)} aria-label={t("deleteEntry")}
+                          <button onClick={() => tx.seriesId?setConfirmOccurrence(tx):setConfirmDeleteTxId(tx.id)} aria-label={t("deleteEntry")}
                             className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Trash2 size={14} style={{ color: C.muted }} /></button>
                         </div>
                       );
@@ -1268,7 +1279,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "budget" && <BudgetPlanner records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
-        {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme}/>}
+        {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} onEdit={openTx}/>}
 
         {tab === "rates" && config.isVenezuela && (
           <CustomRates lang={lang} rates={records.rates} saveRates={rates => saveRecords({...records,rates})} />
@@ -1280,9 +1291,11 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       </main>
 
       {modalType && (
-        <AddModal onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
+        <AddModal key={editingTx?.id||modalType} onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
           rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined);setCalendarOccurrence(null); }} onSave={saveTx}
-          onDelete={editingTx&&records.transactions.some(tx=>tx.id===editingTx.id)?()=>setConfirmDeleteTxId(editingTx.id):undefined}
+          onEditSeries={editingTx?.seriesId?()=>openTx(records.transactions.find(tx=>tx.id===editingTx.seriesId)):undefined}
+          isCopy={!!editingTx&&!editingTx.seriesId&&!records.transactions.some(tx=>tx.id===editingTx.id)} onDuplicate={editingTx&&(editingTx.seriesId||records.transactions.some(tx=>tx.id===editingTx.id))?()=>duplicateTx(calendarOccurrence||editingTx):undefined}
+          onDelete={editingTx&&records.transactions.some(tx=>tx.id===(editingTx.seriesId||editingTx.id))?()=>setConfirmDeleteTxId(editingTx.seriesId||editingTx.id):undefined}
           onDeleteOccurrence={calendarOccurrence?()=>setConfirmOccurrence(calendarOccurrence):undefined} occurrenceDate={calendarOccurrence?.date} />
       )}
       {confirmOccurrence&&<ConfirmDialog message={lang==='es'?`¿Eliminar únicamente el movimiento del ${confirmOccurrence.date}? Las demás fechas de la serie se conservan.`:`Delete only the transaction on ${confirmOccurrence.date}? Other dates in the series are kept.`} confirmLabel={t('yesDelete')} cancelLabel={t('cancel')} onCancel={()=>setConfirmOccurrence(null)} onConfirm={()=>{const current=latestRecords.current,id=confirmOccurrence.id;const next={...current,exceptions:{...current.exceptions,[id]:{...current.exceptions?.[id],skipped:true}}};latestRecords.current=next;saveRecords(next);setConfirmOccurrence(null);setModalType(null);setEditingTx(null);setInitialDate(undefined);setCalendarOccurrence(null);showToast(t('txDeleted'));}}/>}
@@ -1292,7 +1305,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           confirmLabel={t("yesDelete")}
           cancelLabel={t("cancel")}
           onCancel={() => setConfirmDeleteTxId(null)}
-          onConfirm={() => { delTx(confirmDeleteTxId); if(editingTx?.id===confirmDeleteTxId){setModalType(null);setEditingTx(null);setInitialDate(undefined);setCalendarOccurrence(null);}setConfirmDeleteTxId(null); }}
+          onConfirm={() => { delTx(confirmDeleteTxId); if((editingTx?.seriesId||editingTx?.id)===confirmDeleteTxId){setModalType(null);setEditingTx(null);setInitialDate(undefined);setCalendarOccurrence(null);}setConfirmDeleteTxId(null); }}
         />
       )}
     </div>

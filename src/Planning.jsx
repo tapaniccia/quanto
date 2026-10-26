@@ -1,12 +1,12 @@
 import React,{useState} from 'react';
-import {iso,parseDate,periodBounds,inPeriod,transactionValue,expandTransactions,calendarBalances,shiftCalendarMonth} from './finance.js';
+import {iso,parseDate,periodBounds,inPeriod,transactionValue,expandTransactions,calendarBalances,shiftCalendarMonth,isDebtTransaction} from './finance.js';
 import './planning.css';
 import {CasheaAmount} from './CasheaFields.jsx';
 import {historyBounds,historyRows,samePeriod} from './history.js';
 import {ResponsiveContainer,BarChart,Bar,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ReferenceLine} from 'recharts';
 import {Wallet,TrendingUp,TrendingDown,Sparkles,CalendarDays,ChevronLeft,ChevronRight,Plus,List,Clock3} from 'lucide-react';
 const EVENT_COLORS = {ingreso:'#22c55e',egreso:'#ef4444',activo:'#3b82f6',pasivo:'#eab308'};
-export const isDebtOrCashea = tx => tx.type==='pasivo'||['deudas','cashea'].includes(tx.catId)||!!tx.cashea||String(tx.paymentMethod||'').trim().toLowerCase()==='cashea';
+export const isDebtOrCashea = isDebtTransaction;
 const eventColor = tx => isDebtOrCashea(tx)?'#eab308':/^#[0-9a-f]{6}$/i.test(tx.calendarColor || '') ? tx.calendarColor : (EVENT_COLORS[tx.type] || '#64748b');
 const eventLabel = (type,es,tag) => type==='activo'&&tag==='ahorro'?(es?'Ahorro':'Savings'):({ingreso:es?'Ingreso':'Income',egreso:es?'Gasto':'Expense',activo:es?'Activo':'Asset',pasivo:es?'Deuda / cuota':'Debt / installment'}[type] || type);
 export function ExtraFields({value,setValue,rates,venezuela,lang,type,children,installmentPlan=false}) {
@@ -18,7 +18,7 @@ export function ExtraFields({value,setValue,rates,venezuela,lang,type,children,i
   {['egreso','pasivo'].includes(type)&&<label className="quanto-color-toggle"><input type="checkbox" checked={value.fixedExpense??!!value.repeatUnit} onChange={e=>setValue({...value,fixedExpense:e.target.checked})}/>{text('Gasto fijo para el presupuesto','Fixed expense for the budget')}</label>}
   {children}
   {!installmentPlan&&<div className="quanto-columns">{field('feePercent' ,text('Comisión (%)','Fee (%)'),'number')}{field('feeFixed',text('Comisión fija (moneda del movimiento)','Fixed fee (transaction currency)'),'number')}</div>}
-  {!installmentPlan&&!value.cashea&&<><label>{text('Repetición','Repeat')}<select value={value.repeatUnit||''} onChange={e=>setValue({...value,repeatUnit:e.target.value})}><option value="">{text('No se repite','Does not repeat')}</option><option value="days">{text('Días','Days')}</option><option value="weeks">{text('Semanas','Weeks')}</option><option value="months">{text('Meses','Months')}</option></select></label>
+  {!installmentPlan&&!value.cashea&&!value.seriesId&&<><label>{text('Repetición','Repeat')}<select value={value.repeatUnit||''} onChange={e=>setValue({...value,repeatUnit:e.target.value})}><option value="">{text('No se repite','Does not repeat')}</option><option value="days">{text('Días','Days')}</option><option value="weeks">{text('Semanas','Weeks')}</option><option value="months">{text('Meses','Months')}</option></select></label>
   {value.repeatUnit&&<div className="quanto-columns">{field('repeatEvery',text('Cada cuántos','Every'),'number')}{field('repeatUntil',text('Hasta (opcional)','Until (optional)'),'date')}</div>}</>}
  </div>;
 }

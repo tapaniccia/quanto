@@ -85,3 +85,7 @@ export function calendarBalances(transactions, month, venezuela, exceptions = {}
   const sum=predicate=>monthEntries.filter(predicate).reduce((n,tx)=>n+transactionValue(tx,venezuela),0);
   return {opening,income,expenses,closing:running,balances,savings:sum(isSavings),debtPayments:sum(tx=>tx.type==='pasivo'||(tx.type==='egreso'&&tx.catId==='deudas')), ...positionSummary(entries,venezuela)};
 }
+
+// Shared classification for planner commitments and their budget allocation.
+export const isDebtTransaction = tx => tx.type==='pasivo'||['deudas','cashea'].includes(tx.catId)||!!tx.cashea||String(tx.paymentMethod||'').trim().toLowerCase()==='cashea';
+export const budgetBucket = tx => isDebtTransaction(tx)?'needs':tx.type==='activo'&&(['fondo_emergencia','inversion','ahorro_general'].includes(tx.catId)||tx.tag==='ahorro')||tx.tag==='ahorro'&&isExpense(tx)?'savings':isExpense(tx)?(tx.tag==='necesidad'||!tx.tag&&['vivienda','alimentacion','salud','transporte'].includes(tx.catId)?'needs':'wants'):null;

@@ -14,6 +14,8 @@ import {
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
 import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
+import {casheaSchedule} from "./cashea.js";
+import {CasheaFields,CasheaAmount,CasheaSettlement} from "./CasheaFields.jsx";
 import DebtPlanner from "./DebtPlanner.jsx";
 import BudgetPlanner from "./BudgetPlanner.jsx";
 import TransactionRate, {RateHistorySync} from "./TransactionRate.jsx";
@@ -772,20 +774,32 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
     if (!tagTouched) setTagRaw(suggestTag(type, catId));
   }, [catId]); // eslint-disable-line
 
+  const [casheaPlan,setCasheaPlan]=useState({downMode:'percent',down:40,installments:2,everyDays:14,firstDue:''});
+  const [settlement,setSettlement]=useState({paid:!!editing?.casheaSettlement,date:editing?.casheaSettlement?.date||todayISO(),manual:!!editing?.casheaSettlement,rate:editing?.casheaSettlement?.rate||'',effectiveRate:editing?.casheaSettlement?.rate||0,amountBS:editing?.casheaSettlement?.amountBS||0});
+  const splitCashea=!editing&&['egreso','pasivo'].includes(type)&&extra.paymentMethod?.trim().toLowerCase()==='cashea';
+  let casheaPreview=null;try{if(splitCashea)casheaPreview=casheaSchedule({...casheaPlan,total:amount,date});}catch{}
+  useEffect(()=>{if(splitCashea)setCurrency('USD');},[splitCashea]);
   const handleRateSelection=useCallback(patch=>{setRate(patch.rate);setExtra(previous=>({...previous,...patch}));},[]);
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
   const meta = TYPE_META[type];
-  const canSave = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
+  const validOrdinary = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
+  const validSettlement=!editing?.cashea||!settlement.paid||(settlement.date&&settlement.date<=todayISO()&&settlement.date>=editing.cashea.purchaseDate&&Number.isFinite(settlement.effectiveRate)&&settlement.effectiveRate>0);
+  const canSave=splitCashea?!!casheaPreview:validOrdinary&&validSettlement;
   const save = () => {
     if (!canSave) return;
+    if(splitCashea){
+      const plan=casheaSchedule({...casheaPlan,total:amount,date}),planId=uid();
+      const transactions=plan.payments.map(payment=>({...extra,id:uid(),type:payment.role==='initial'?'egreso':'pasivo',catId:payment.role==='initial'?catId:'cashea',desc:`${desc.trim()||'Cashea'} · ${payment.role==='initial'?(lang==='es'?'Inicial':'Down payment'):`${lang==='es'?'Cuota':'Installment'} ${payment.index}/${plan.installments}`}`,date:payment.date,currency:'USD',amount:payment.amount,rate:null,rateReference:null,referenceRate:null,selectedRate:null,fixedExpense:payment.role==='installment'?true:!!extra.fixedExpense,feeFixed:0,feePercent:0,recurrence:null,repeatUnit:'',paymentMethod:'Cashea',ownerId,private:isPrivate,tag:tag||'necesidad',cashea:{planId,purchaseDate:date,purchaseTotalUSD:plan.total,downUSD:plan.down,installments:plan.installments,everyDays:plan.everyDays,role:payment.role,index:payment.index,nominalUSD:payment.amount,dueDate:payment.date,purchaseCategory:catId},casheaSettlement:null}));
+      onSave(transactions);onClose();return;
+    }
     const amt = Number(amount);
     const usedRate = currency === "BS" ? Number(rate) : null;
     onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
       id: editing ? editing.id : uid(), type, catId, desc: desc.trim(), date, currency,
-      amount: amt, rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
+      amount: amt, ...(editing?.cashea?{currency:'USD',date:settlement.paid?settlement.date:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date),cashea:{...editing.cashea,nominalUSD:amt,dueDate:settlement.paid?editing.cashea.dueDate:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date)},casheaSettlement:settlement.paid?{date:settlement.date,rate:settlement.effectiveRate,rateDate:settlement.rateDate,amountBS:settlement.amountBS}:null}:{}), rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
   };
@@ -801,7 +815,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
 
-        <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
+        <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" disabled={!!editing?.cashea} className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
         <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p>
         <label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
@@ -839,7 +853,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           {config.isVenezuela && (
             <div>
               <label htmlFor="tx-currency" className="text-xs" style={{ color: C.muted }}>{t("currency")}</label>
-              <select id="tx-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}
+              <select id="tx-currency" disabled={splitCashea||!!editing?.cashea} value={currency} onChange={(e) => setCurrency(e.target.value)}
                 className="w-full mt-1.5 px-2 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }}>
                 <option value="USD">USD</option>
                 <option value="BS">Bs</option>
@@ -847,7 +861,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
             </div>
           )}
           <div className={config.isVenezuela ? "col-span-1" : ""}>
-            <label htmlFor="tx-amount" className="text-xs" style={{ color: C.muted }}>{t("amountInCurrency")} {!config.isVenezuela && `(${config.currency.symbol})`}</label>
+            <label htmlFor="tx-amount" className="text-xs" style={{ color: C.muted }}>{splitCashea?(lang==='es'?'Total de la compra (USD)':"Purchase total (USD)"):t("amountInCurrency")} {!config.isVenezuela && `(${config.currency.symbol})`}</label>
             <input type="number" min="0" step="0.01" id="tx-amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
               className="w-full mt-1.5 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}`, ...mono }} />
           </div>
@@ -874,7 +888,10 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           </div>
         )}
 
-        <ExtraFields type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} />
+        <ExtraFields type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} installmentPlan={splitCashea}>
+          {splitCashea&&<CasheaFields value={casheaPlan} onChange={setCasheaPlan} total={amount} date={date} rates={rates} lang={lang}/>}
+          {editing?.cashea&&<CasheaSettlement tx={{...editing,...extra,amount:Number(amount),type}} rates={rates} value={settlement} onChange={setSettlement} lang={lang}/>}
+        </ExtraFields>
         <p className="text-sm mb-3" style={{color:C.text}}>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</p>
         <p className="text-xs mb-3" style={{color:C.muted}}>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</p>
         <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
@@ -989,11 +1006,12 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     { id: "settings", label: t("settings"), icon: SettingsIcon },
   ];
 
-  const saveTx = (tx) => {
-    const exists = records.transactions.some((t) => t.id === tx.id);
-    const next = exists ? records.transactions.map((t) => (t.id === tx.id ? tx : t)) : [tx, ...records.transactions];
-    saveRecords({ ...records, transactions: next });
-    showToast(t("txSaved"));
+  const saveTx = (input) => {
+    const payments=Array.isArray(input)?input:[input],byId=new Map(payments.map(tx=>[tx.id,tx]));
+    const current=latestRecords.current;
+    const next=[...payments.filter(tx=>!current.transactions.some(old=>old.id===tx.id)),...current.transactions.map(tx=>byId.get(tx.id)||tx)];
+    const value={...current,transactions:next};latestRecords.current=value;saveRecords(value);
+    showToast(Array.isArray(input)?`${payments.length} ${lang==='es'?'pagos Cashea guardados.':'Cashea payments saved.'}`:t('txSaved'));
   };
   const delTx = (id) => {
     saveRecords({ ...records, transactions: records.transactions.filter((tx) => tx.id !== id), exceptions: Object.fromEntries(Object.entries(records.exceptions || {}).filter(([key]) => !key.startsWith(`${id}@`))) });
@@ -1224,10 +1242,10 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                             <p className="text-sm font-medium" style={{ ...mono, color: meta.color }}>
                               {tx.type === "egreso" || tx.type === "pasivo" ? "-" : "+"}{config.isVenezuela ? `$${fmt(usd)}` : money(usd)}
                             </p>
-                            {config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
+                            <CasheaAmount tx={tx} rates={records.rates} lang={lang}/>{config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
                             {config.isVenezuela&&tx.currency==='BS'&&tx.rateReference&&tx.rateReference!=='USD'&&tx.referenceRate>0&&<p className="text-[11px]" style={{color:C.muted}}>{fmt(usd*Number(tx.rate)/Number(tx.referenceRate))} {tx.rateReference}</p>}
                           </div>
-                          <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => { setModalType(tx.type); setEditingTx({...tx, id: uid(), recurrence: null}); }}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
+                          <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => { setModalType(tx.type); setEditingTx({...tx, id: uid(), recurrence: null, cashea:undefined,casheaSettlement:null}); }}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
                           <button onClick={() => { setModalType(tx.type); setEditingTx(tx); }} aria-label={t("editEntryAction")}
                             className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Pencil size={14} style={{ color: C.muted }} /></button>
                           <button onClick={() => setConfirmDeleteTxId(tx.id)} aria-label={t("deleteEntry")}

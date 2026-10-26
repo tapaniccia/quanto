@@ -3,7 +3,7 @@ export function notificationEvents(records,config,today,options={}){
  const d=parseDate(today);d.setDate(d.getDate()+1);const end=iso(d);
  const owner=config.members?.[0]?.id;const visible=records.transactions.filter(t=>!t.private||t.ownerId===owner);
  const events=expandTransactions(visible,'1970-01-01',end,records.exceptions||{});
- const due=events.filter(t=>t.date===today),format=n=>new Intl.NumberFormat('es',{style:'currency',currency:config.isVenezuela?'USD':config.currency?.code||'USD'}).format(n);
+ const due=events.filter(t=>t.date===today&&!t.casheaSettlement),format=n=>new Intl.NumberFormat('es',{style:'currency',currency:config.isVenezuela?'USD':config.currency?.code||'USD'}).format(n);
  const sum=list=>list.reduce((n,t)=>n+transactionValue(t,config.isVenezuela),0),out=[];
  const income=due.filter(t=>t.type==='ingreso'),expenses=due.filter(isExpense);
  if(options.expenses!==false&&expenses.length)out.push({kind:'expenses',title:'Tus pagos de hoy',body:`Hoy tienes ${expenses.length} ${expenses.length===1?'gasto programado':'gastos programados'}${options.showAmounts?` por ${format(sum(expenses))}`:''}. Revisa tu calendario.`});

@@ -1,13 +1,14 @@
 import React,{useState} from 'react';
 import {iso,parseDate,periodBounds,inPeriod,transactionValue,expandTransactions,calendarBalances,shiftCalendarMonth} from './finance.js';
 import './planning.css';
+import {CasheaAmount} from './CasheaFields.jsx';
 import {historyBounds,historyRows,samePeriod} from './history.js';
 import {ResponsiveContainer,BarChart,Bar,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ReferenceLine} from 'recharts';
 import {Wallet,TrendingUp,TrendingDown,Sparkles,CalendarDays,ChevronLeft,ChevronRight,Plus,List,Clock3} from 'lucide-react';
 const EVENT_COLORS = {ingreso:'#22c55e',egreso:'#ef4444',activo:'#3b82f6',pasivo:'#a855f7'};
 const eventColor = tx => /^#[0-9a-f]{6}$/i.test(tx.calendarColor || '') ? tx.calendarColor : (EVENT_COLORS[tx.type] || '#64748b');
 const eventLabel = (type,es,tag) => type==='activo'&&tag==='ahorro'?(es?'Ahorro':'Savings'):({ingreso:es?'Ingreso':'Income',egreso:es?'Gasto':'Expense',activo:es?'Activo':'Asset',pasivo:es?'Deuda / cuota':'Debt / installment'}[type] || type);
-export function ExtraFields({value,setValue,rates,venezuela,lang,type}) {
+export function ExtraFields({value,setValue,rates,venezuela,lang,type,children,installmentPlan=false}) {
  const es=lang==='es', text=(a,b)=>es?a:b;
  const field=(key,label,type='text')=><label>{label}<input placeholder={({customCategory:text('Ej. Suscripciones','e.g. Subscriptions'),beneficiary:text('Ej. Mis perros','e.g. My dogs'),group:text('Ej. Casa o Business','e.g. Home or Business'),labels:text('Ej. mensual, compartido','e.g. monthly, shared'),feePercent:'0',feeFixed:'0',repeatEvery:'1'})[key]} type={type} min={type==='number'?0:undefined} step={type==='number'?'any':undefined} value={value[key]??''} onChange={e=>setValue({...value,[key]:e.target.value})}/></label>;
  return <div className="quanto-extra">
@@ -16,11 +17,12 @@ export function ExtraFields({value,setValue,rates,venezuela,lang,type}) {
   {field('beneficiary',text('Para quién (opcional)','For whom (optional)'))}
   {field('group',text('Grupo (opcional)','Group (optional)'))}
   {field('labels',text('Etiquetas (separadas por comas)','Tags (comma separated)'))}
-  <label>{text('Método de pago','Payment method')}<input placeholder={text('Selecciona o escribe un método','Select or enter a method')} list="payment-methods" value={value.paymentMethod||''} onChange={e=>setValue({...value,paymentMethod:e.target.value})}/><datalist id="payment-methods">{['Tarjeta','Binance','Zelle','Efectivo','Pago Móvil','Cashea','Tarjeta internacional'].map(x=><option key={x}>{x}</option>)}</datalist></label>
+  <label>{text('Método de pago','Payment method')}<input placeholder={text('Selecciona o escribe un método','Select or enter a method')} list="payment-methods" disabled={!!value.cashea} value={value.paymentMethod||''} onChange={e=>setValue({...value,paymentMethod:e.target.value})}/><datalist id="payment-methods">{['Tarjeta','Binance','Zelle','Efectivo','Pago Móvil','Cashea','Tarjeta internacional'].map(x=><option key={x}>{x}</option>)}</datalist></label>
   {['egreso','pasivo'].includes(type)&&<label className="quanto-color-toggle"><input type="checkbox" checked={value.fixedExpense??!!value.repeatUnit} onChange={e=>setValue({...value,fixedExpense:e.target.checked})}/>{text('Gasto fijo para el presupuesto','Fixed expense for the budget')}</label>}
-  <div className="quanto-columns">{field('feePercent' ,text('Comisión (%)','Fee (%)'),'number')}{field('feeFixed',text('Comisión fija (moneda del movimiento)','Fixed fee (transaction currency)'),'number')}</div>
-  <label>{text('Repetición','Repeat')}<select value={value.repeatUnit||''} onChange={e=>setValue({...value,repeatUnit:e.target.value})}><option value="">{text('No se repite','Does not repeat')}</option><option value="days">{text('Días','Days')}</option><option value="weeks">{text('Semanas','Weeks')}</option><option value="months">{text('Meses','Months')}</option></select></label>
-  {value.repeatUnit&&<div className="quanto-columns">{field('repeatEvery',text('Cada cuántos','Every'),'number')}{field('repeatUntil',text('Hasta (opcional)','Until (optional)'),'date')}</div>}
+  {children}
+  {!installmentPlan&&<div className="quanto-columns">{field('feePercent' ,text('Comisión (%)','Fee (%)'),'number')}{field('feeFixed',text('Comisión fija (moneda del movimiento)','Fixed fee (transaction currency)'),'number')}</div>}
+  {!installmentPlan&&!value.cashea&&<><label>{text('Repetición','Repeat')}<select value={value.repeatUnit||''} onChange={e=>setValue({...value,repeatUnit:e.target.value})}><option value="">{text('No se repite','Does not repeat')}</option><option value="days">{text('Días','Days')}</option><option value="weeks">{text('Semanas','Weeks')}</option><option value="months">{text('Meses','Months')}</option></select></label>
+  {value.repeatUnit&&<div className="quanto-columns">{field('repeatEvery',text('Cada cuántos','Every'),'number')}{field('repeatUntil',text('Hasta (opcional)','Until (optional)'),'date')}</div>}</>}
  </div>;
 }
 export function Comparison({transactions,config,lang,theme='dark'}) {
@@ -69,6 +71,7 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
   const changeMonth=value=>{setMonth(value);setSelectedDate(`${value}-01`);};
   const reschedule=(id,date)=>{
     const tx=visible.find(t=>t.id===id);
+    if(tx?.casheaSettlement)return;
     if(!date&&!tx)return;
     if(!id||(!tx&&!visible.some(t=>id.startsWith(`${t.id}@`))))return;
     if(tx)saveRecords({...records,transactions:records.transactions.map(t=>t.id===id?{...t,date}:t)});
@@ -76,14 +79,14 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
   };
   const edit=t=>onEdit(t.seriesId?visible.find(x=>x.id===t.seriesId):t);
   const entry=t=>(
-    <article key={t.id} draggable onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} className="quanto-event" style={{'--event-color':eventColor(t)}}>
+    <article key={t.id} draggable={!t.casheaSettlement} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} className="quanto-event" style={{'--event-color':eventColor(t)}}>
       <button className="quanto-event-main" onClick={()=>edit(t)} aria-label={`${text('Editar','Edit')} ${t.desc||t.customCategory||eventLabel(t.type,es,t.tag)}`}>
         <span className="quanto-event-kind"><i aria-hidden="true"/>{eventLabel(t.type,es,t.tag)}{t.seriesId&&<span title={text('Recurrente','Recurring')}> · ↻</span>}</span>
         <strong>{t.desc||t.customCategory||categoryLabel?.(t)||eventLabel(t.type,es,t.tag)}</strong>
         <span className="quanto-event-amount">{['egreso','pasivo'].includes(t.type)?'−':t.type==='ingreso'?'+':''}{money(transactionValue(t,config.isVenezuela))}</span>
-        {t.currency==='BS'&&t.rateReference&&t.rateReference!=='USD'&&t.referenceRate>0&&<small>{(transactionValue(t,config.isVenezuela)*Number(t.rate)/Number(t.referenceRate)).toFixed(2)} {t.rateReference} · {text('Referencia','Reference')} {t.referenceDate||t.date}</small>}
+        <CasheaAmount tx={t} rates={records.rates} lang={lang}/>{t.currency==='BS'&&t.rateReference&&t.rateReference!=='USD'&&t.referenceRate>0&&<small>{(transactionValue(t,config.isVenezuela)*Number(t.rate)/Number(t.referenceRate)).toFixed(2)} {t.rateReference} · {text('Referencia','Reference')} {t.referenceDate||t.date}</small>}
       </button>
-      <details className="quanto-event-actions"><summary>{text('Cambiar fecha','Reschedule')}</summary><label>{text('Fecha del movimiento','Transaction date')}<input type="date" value={t.date||''} onChange={e=>{if(e.target.value||!t.seriesId)reschedule(t.id,e.target.value);}}/></label></details>
+      {!t.casheaSettlement&&<details className="quanto-event-actions"><summary>{text('Cambiar fecha','Reschedule')}</summary><label>{text('Fecha del movimiento','Transaction date')}<input type="date" value={t.date||''} onChange={e=>{if(e.target.value||!t.seriesId)reschedule(t.id,e.target.value);}}/></label></details>}
     </article>
   );
   const drop=(e,date)=>{e.preventDefault();reschedule(e.dataTransfer.getData('text/plain'),date);};

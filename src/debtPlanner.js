@@ -1,4 +1,4 @@
-import {isExpense,iso,parseDate,periodBounds,inPeriod,expandTransactions,transactionValue,isDebtTransaction} from './finance.js';
+import {isExpense,iso,parseDate,periodBounds,inPeriod,expandTransactions,transactionValue,isDebtPayment} from './finance.js';
 const cents=n=>Math.max(0,Math.round((Number(n)||0)*100));
 export function cycleBaseline(records,config,today){const bounds=periodBounds(today,'cycle',config.cycleDay||1);const entries=expandTransactions(records.transactions,bounds.start,bounds.end,records.exceptions||{}).filter(t=>t.date<=today);const sum=type=>entries.filter(t=>(type==='egreso'?isExpense(t):t.type===type)).reduce((n,t)=>n+transactionValue(t,config.isVenezuela),0);return {...bounds,income:sum('ingreso'),expenses:sum('egreso')};}
 export function projectPlan({debts=[],goals=[],income=0,expenses=0,reserve=0,debtShare=60,strategy='due',start,cycleDay=1,horizon=24}){
@@ -27,6 +27,6 @@ export function projectPlan({debts=[],goals=[],income=0,expenses=0,reserve=0,deb
 // Derived from the ledger, never copied into planner.debts. Edits and deletions remain live.
 export function registeredDebts(records,config,today){
  const end=periodBounds(today,'cycle',config.cycleDay||1,60).end;
- const entries=[...expandTransactions(records.transactions.filter(isDebtTransaction),'1970-01-01',end,records.exceptions||{}),...records.transactions.filter(tx=>isDebtTransaction(tx)&&!tx.date)];
+ const entries=[...expandTransactions(records.transactions.filter(isDebtPayment),'1970-01-01',end,records.exceptions||{}),...records.transactions.filter(tx=>isDebtPayment(tx)&&!tx.date)];
  return entries.map(tx=>({id:`ledger:${tx.id}`,name:tx.desc||tx.paymentMethod||'Deuda',balance:transactionValue(tx,config.isVenezuela),installment:transactionValue(tx,config.isVenezuela),nextDue:tx.date||'',everyDays:1,scheduledOnly:true,method:tx.paymentMethod||'',paid:!!(tx.debtPaid||tx.casheaSettlement),tx}));
 }

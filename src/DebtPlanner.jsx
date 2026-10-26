@@ -1,13 +1,13 @@
 import React,{useState,useRef,useEffect} from 'react';
 import {Wallet,CalendarDays,Target,Plus,Pencil,Trash2} from 'lucide-react';
 import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,Legend} from 'recharts';
-import {iso,periodBounds,transactionValue,isDebtTransaction,inPeriod} from './finance.js';import {cycleBaseline,projectPlan,registeredDebts} from './debtPlanner.js';import {budgetSummary} from './budgetMath.js';import './debtPlanner.css';
+import {iso,periodBounds,transactionValue,isDebtPayment,inPeriod} from './finance.js';import {cycleBaseline,projectPlan,registeredDebts} from './debtPlanner.js';import {budgetSummary} from './budgetMath.js';import './debtPlanner.css';
 const uid=()=>crypto.randomUUID();
 export default function DebtPlanner({records,saveRecords,config,lang,currentUser,theme,view="debts",onEdit}){
  const isGoals=view==='goals'; const es=lang==='es',t=(a,b)=>es?a:b,today=iso(new Date()),unit=config.isVenezuela?'USD':config.currency.code;
  const planner=records.planner||{debts:[],goals:[],settings:{}},manualDebts=planner.debts||[],goals=planner.goals||[];
  const linked=registeredDebts({...records,transactions:records.transactions.filter(tx=>!tx.private||tx.ownerId===currentUser.id)},config,today),pending=linked.filter(d=>!d.paid),debts=[...manualDebts,...pending.filter(d=>d.nextDue)];
- const baseline=cycleBaseline({...records,transactions:records.transactions.filter(tx=>(!tx.private||tx.ownerId===currentUser.id)&&!isDebtTransaction(tx))},config,today);
+ const baseline=cycleBaseline({...records,transactions:records.transactions.filter(tx=>(!tx.private||tx.ownerId===currentUser.id)&&!isDebtPayment(tx))},config,today);
  const[settings,setSettings]=useState(()=>({income:planner.settings?.income??'',expenses:planner.settings?.expenses??'',reserve:planner.settings?.reserve??0,debtShare:planner.settings?.debtShare??60}));
  const[strategy,setStrategy]=useState('due'),[horizon,setHorizon]=useState(24),[form,setForm]=useState(null),[draft,setDraft]=useState({}),[message,setMessage]=useState('');
  const confirmed=budgetSummary({...records,transactions:records.transactions.filter(tx=>!tx.private||tx.ownerId===currentUser.id)},config,today,config.budget||{});

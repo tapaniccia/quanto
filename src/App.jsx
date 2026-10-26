@@ -749,7 +749,7 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates }) {
+function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate }) {
   const C = useC();
   const t = (k) => STR[lang][k];
   const [type,setType]=useState(initialType==='capital'?'ingreso':initialType==='ahorro'?'activo':initialType);
@@ -900,6 +900,10 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           <InfoTip text={t("privateHelp")} />
         </label>
 
+        {onDelete&&<div className="mb-4 space-y-2" style={{borderTop:`1px solid ${C.border}`,paddingTop:16}}>
+          {onDeleteOccurrence&&<button type="button" onClick={onDeleteOccurrence} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{lang==='es'?`Eliminar solo el ${occurrenceDate}`:`Delete only ${occurrenceDate}`}</button>}
+          <button type="button" onClick={onDelete} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{editing?.recurrence?(lang==='es'?'Eliminar toda la serie':'Delete entire series'):(lang==='es'?'Eliminar transacción':'Delete transaction')}</button>
+        </div>}
         <div className="flex gap-2">
           <Btn variant="ghost" onClick={onClose} className="flex-1">{t("cancel")}</Btn>
           <Btn onClick={save} disabled={!canSave} className="flex-1">{t("save")}</Btn>
@@ -931,6 +935,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const [txFilter, setTxFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState(null);
+  const [calendarOccurrence,setCalendarOccurrence]=useState(null);
+  const [confirmOccurrence,setConfirmOccurrence]=useState(null);
 
   const me = config.members.find((m) => m.id === currentUser.id) || currentUser;
 
@@ -1014,7 +1020,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     showToast(Array.isArray(input)?`${payments.length} ${lang==='es'?'pagos Cashea guardados.':'Cashea payments saved.'}`:t('txSaved'));
   };
   const delTx = (id) => {
-    saveRecords({ ...records, transactions: records.transactions.filter((tx) => tx.id !== id), exceptions: Object.fromEntries(Object.entries(records.exceptions || {}).filter(([key]) => !key.startsWith(`${id}@`))) });
+    const current=latestRecords.current;
+    const next={ ...current, transactions: current.transactions.filter((tx) => tx.id !== id), exceptions: Object.fromEntries(Object.entries(current.exceptions || {}).filter(([key]) => !key.startsWith(`${id}@`))) };latestRecords.current=next;saveRecords(next);
     showToast(t("txDeleted"));
   };
   const addRate = (r) => { saveRecords({ ...records, rates: [...records.rates, r] }); showToast(t("rateSaved")); };
@@ -1063,7 +1070,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
         <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => {setCalendarOccurrence(occurrence||null);setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <div>
@@ -1274,15 +1281,18 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
       {modalType && (
         <AddModal onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
-          rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined); }} onSave={saveTx} />
+          rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined);setCalendarOccurrence(null); }} onSave={saveTx}
+          onDelete={editingTx&&records.transactions.some(tx=>tx.id===editingTx.id)?()=>setConfirmDeleteTxId(editingTx.id):undefined}
+          onDeleteOccurrence={calendarOccurrence?()=>setConfirmOccurrence(calendarOccurrence):undefined} occurrenceDate={calendarOccurrence?.date} />
       )}
+      {confirmOccurrence&&<ConfirmDialog message={lang==='es'?`¿Eliminar únicamente el movimiento del ${confirmOccurrence.date}? Las demás fechas de la serie se conservan.`:`Delete only the transaction on ${confirmOccurrence.date}? Other dates in the series are kept.`} confirmLabel={t('yesDelete')} cancelLabel={t('cancel')} onCancel={()=>setConfirmOccurrence(null)} onConfirm={()=>{const current=latestRecords.current,id=confirmOccurrence.id;const next={...current,exceptions:{...current.exceptions,[id]:{...current.exceptions?.[id],skipped:true}}};latestRecords.current=next;saveRecords(next);setConfirmOccurrence(null);setModalType(null);setEditingTx(null);setInitialDate(undefined);setCalendarOccurrence(null);showToast(t('txDeleted'));}}/>}
       {confirmDeleteTxId && (
         <ConfirmDialog
-          message={t("confirmDeleteTx")}
+          message={records.transactions.find(tx=>tx.id===confirmDeleteTxId)?.recurrence?(lang==='es'?'¿Eliminar toda la serie recurrente y sus fechas programadas? No se puede deshacer.':'Delete the entire recurring series and its scheduled dates? This cannot be undone.'):records.transactions.find(tx=>tx.id===confirmDeleteTxId)?.cashea?(lang==='es'?'¿Eliminar solo este pago de Cashea? Las demás cuotas se conservan. No se puede deshacer.':'Delete only this Cashea payment? Other installments are kept. This cannot be undone.'):t("confirmDeleteTx")}
           confirmLabel={t("yesDelete")}
           cancelLabel={t("cancel")}
           onCancel={() => setConfirmDeleteTxId(null)}
-          onConfirm={() => { delTx(confirmDeleteTxId); setConfirmDeleteTxId(null); }}
+          onConfirm={() => { delTx(confirmDeleteTxId); if(editingTx?.id===confirmDeleteTxId){setModalType(null);setEditingTx(null);setInitialDate(undefined);setCalendarOccurrence(null);}setConfirmDeleteTxId(null); }}
         />
       )}
     </div>

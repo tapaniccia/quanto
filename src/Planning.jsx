@@ -74,7 +74,7 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
     if(tx)saveRecords({...records,transactions:records.transactions.map(t=>t.id===id?{...t,date}:t)});
     else saveRecords({...records,exceptions:{...records.exceptions,[id]:{...records.exceptions?.[id],date}}});
   };
-  const edit=t=>onEdit(t.seriesId?visible.find(x=>x.id===t.seriesId):t);
+  const edit=t=>onEdit(t.seriesId?visible.find(x=>x.id===t.seriesId):t,t.seriesId?t:null);
   const entry=t=>(
     <article key={t.id} draggable={!t.casheaSettlement} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} className="quanto-event" style={{'--event-color':eventColor(t)}}>
       <button className="quanto-event-main" onClick={()=>edit(t)} aria-label={`${text('Editar','Edit')} ${t.desc||t.customCategory||eventLabel(t.type,es,t.tag)}`}>

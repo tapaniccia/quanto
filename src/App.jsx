@@ -11,7 +11,7 @@ import {
   Eye, EyeOff, Sparkles, Trash2, PiggyBank, KeyRound, LayoutGrid, Receipt,
   Scale, Pencil, Sun, Moon, Target,
 } from "lucide-react";
-import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates } from "./Planning.jsx";
+import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates, isDebtOrCashea } from "./Planning.jsx";
 import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
 import {casheaSchedule} from "./cashea.js";
@@ -395,7 +395,7 @@ const typeMeta = (C) => ({
   ingreso: { icon: TrendingUp, color: C.teal },
   egreso: { icon: TrendingDown, color: C.red },
   activo: { icon: Landmark, color: C.gold },
-  pasivo: { icon: Scale, color: C.violet },
+  pasivo: { icon: Scale, color: C.bg===DARK.bg?'#facc15':'#987400' },
 });
 const NEEDS_CATS = ["vivienda", "alimentacion", "salud", "transporte", "deudas"];
 const SAVINGS_CATS = ["fondo_emergencia", "inversion", "ahorro_general"];
@@ -782,7 +782,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
   const handleRateSelection=useCallback(patch=>{setRate(patch.rate);setExtra(previous=>({...previous,...patch}));},[]);
   const TYPE_META = typeMeta(C);
   const TAG_META = tagMeta(C);
-  const meta = TYPE_META[type];
+  const meta = isDebtOrCashea({...extra,type,catId})?{...TYPE_META[type],color:C.bg===DARK.bg?'#facc15':'#987400'}:TYPE_META[type];
   const validOrdinary = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
   const validSettlement=!editing?.cashea||!settlement.paid||(settlement.date&&settlement.date<=todayISO()&&settlement.date>=editing.cashea.purchaseDate&&Number.isFinite(settlement.effectiveRate)&&settlement.effectiveRate>0);
@@ -1216,12 +1216,13 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                     .sort((a, b) => (a.date < b.date ? 1 : -1))
                     .map((tx) => {
                       const cat = CATS[tx.type].find((c) => c.id === tx.catId);
-                      const meta = TYPE_META[tx.type];
+                      const yellow=isDebtOrCashea(tx);
+                      const meta = yellow?{...TYPE_META[tx.type],color:theme==='dark'?'#facc15':'#987400'}:TYPE_META[tx.type];
                       const owner = memberOf(tx.ownerId);
                       const usd = toUSD(tx);
                       const rowTag = effTag(tx);
                       return (
-                        <div key={tx.id} className="quanto-transaction-row flex items-center gap-3 px-4 py-3" style={{ borderLeft:`3px solid ${meta.color}`, borderTop: `1px solid ${C.border}` }}>
+                        <div key={tx.id} className="quanto-transaction-row flex items-center gap-3 px-4 py-3" style={{ background:yellow?'#eab30814':undefined,borderLeft:`3px solid ${yellow?'#eab308':meta.color}`, borderTop: `1px solid ${C.border}` }}>
                           <div className="quanto-bare-icon flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
                             {cat && <cat.icon size={15} style={{ color: meta.color }} />}
                           </div>

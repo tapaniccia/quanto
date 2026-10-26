@@ -1063,7 +1063,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
         <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":undefined);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={tx => {setEditingTx(tx); setModalType(tx.type);}} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <div>

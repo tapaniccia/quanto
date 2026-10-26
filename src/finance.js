@@ -83,10 +83,18 @@ export function calendarBalances(transactions, month, venezuela, exceptions = {}
   }
   const monthEntries=entries.filter(tx=>inPeriod(tx,bounds));
   const sum=predicate=>monthEntries.filter(predicate).reduce((n,tx)=>n+transactionValue(tx,venezuela),0);
-  return {opening,income,expenses,closing:running,balances,savings:sum(isSavings),debtPayments:sum(tx=>tx.type==='pasivo'||(tx.type==='egreso'&&tx.catId==='deudas')), ...positionSummary(entries,venezuela)};
+  return {opening,income,expenses,closing:running,balances,savings:sum(isSavings),debtPayments:sum(isDebtPayment), ...positionSummary(entries,venezuela)};
 }
 
 // Shared classification for planner commitments and their budget allocation.
 export const isDebtTransaction = tx => tx.type==='pasivo'||['deudas','cashea'].includes(tx.catId)||!!tx.cashea||String(tx.paymentMethod||'').trim().toLowerCase()==='cashea';
 export const isDebtPayment = tx => isExpense(tx)&&isDebtTransaction(tx);
-export const budgetBucket = tx => isDebtPayment(tx)?'needs':tx.type==='activo'&&(['fondo_emergencia','inversion','ahorro_general'].includes(tx.catId)||tx.tag==='ahorro')||tx.tag==='ahorro'&&isExpense(tx)?'savings':isExpense(tx)?(tx.tag==='necesidad'||!tx.tag&&['vivienda','alimentacion','salud','transporte'].includes(tx.catId)?'needs':'wants'):null;
+export const spendingCategory = tx => tx.expenseCategory || (tx.cashea?.purchaseCategory&&!['cashea','deudas'].includes(tx.cashea.purchaseCategory)?tx.cashea.purchaseCategory:null) || tx.catId;
+export const budgetBucket = tx => {
+ if(isSavings(tx)||isExpense(tx)&&tx.tag==='ahorro')return 'savings';
+ if(!isExpense(tx))return null;
+ if(tx.tag==='necesidad')return 'needs';
+ if(tx.tag==='gusto')return 'wants';
+ const category=spendingCategory(tx);
+ return ['vivienda','alimentacion','salud','transporte','vehiculo','educacion','deudas','cashea'].includes(category)||isDebtPayment(tx)&&!tx.expenseCategory&&!tx.cashea?.purchaseCategory?'needs':'wants';
+};

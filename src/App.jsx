@@ -12,7 +12,7 @@ import {
   Scale, Pencil, Sun, Moon, Target,
 } from "lucide-react";
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates, isDebtOrCashea } from "./Planning.jsx";
-import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary } from "./finance.js";
+import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary, spendingCategory, budgetBucket } from "./finance.js";
 import quantoLogo from "./assets/quanto.png";
 import {casheaSchedule} from "./cashea.js";
 import {CasheaFields,CasheaAmount,CasheaSettlement} from "./CasheaFields.jsx";
@@ -23,6 +23,7 @@ import {mergeRateHistory} from "./exchangeRates.js";
 import {isUsdRate} from "./exchangeRates.js";
 import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
+import "./refinements.css";
 
 /* ---------------------------------------------------------------------- */
 /*  Design tokens (dark + light)                                           */
@@ -365,6 +366,7 @@ const CATS = {
     { id: "vivienda", icon: Home, es: "Vivienda", en: "Housing", tipEs: "Alquiler, cuota, servicios, mantenimiento.", tipEn: "Rent, mortgage payment, utilities, upkeep." },
     { id: "alimentacion", icon: Utensils, es: "Alimentación", en: "Food", tipEs: "Mercado y comidas fuera de casa.", tipEn: "Groceries and eating out." },
     { id: "transporte", icon: Car, es: "Transporte", en: "Transportation", tipEs: "Gasolina, transporte público, mantenimiento del vehículo.", tipEn: "Gas, public transit, vehicle upkeep." },
+    { id: "vehiculo", icon: Car, es: "Vehículo", en: "Vehicle", tipEs: "Compra, repuestos, reparaciones y accesorios del vehículo.", tipEn: "Vehicle purchase, parts, repairs and accessories." },
     { id: "salud", icon: HeartPulse, es: "Salud", en: "Health", tipEs: "Médicos, medicinas, seguro de salud.", tipEn: "Doctors, medicine, health insurance." },
     { id: "educacion", icon: GraduationCap, es: "Educación", en: "Education", tipEs: "Colegiaturas, cursos, materiales.", tipEn: "Tuition, courses, materials." },
     { id: "entretenimiento", icon: Film, es: "Entretenimiento", en: "Entertainment", tipEs: "Salidas, streaming, hobbies.", tipEn: "Outings, streaming, hobbies." },
@@ -397,7 +399,7 @@ const typeMeta = (C) => ({
   activo: { icon: Landmark, color: C.gold },
   pasivo: { icon: Scale, color: C.bg===DARK.bg?'#facc15':'#987400' },
 });
-const NEEDS_CATS = ["vivienda", "alimentacion", "salud", "transporte", "deudas"];
+const NEEDS_CATS = ["vehiculo","vivienda", "alimentacion", "salud", "transporte", "deudas"];
 const SAVINGS_CATS = ["fondo_emergencia", "inversion", "ahorro_general"];
 const MEMBER_COLORS = ["#B18F32", "#0F7C42", "#6B8896", "#C2453A", "#8A6A1E"];
 const EMOJI_OPTIONS = ["🙂", "😎", "🤓", "🥳", "🦊", "🐼", "🐱", "🐶", "🦄", "🐸", "🌟", "🚀", "🌈", "🍀", "🥑", "🦁", "👩", "🧑", "👨", "🐧"];
@@ -415,12 +417,12 @@ const tagMeta = (C) => ({
   ahorro: { color: C.teal },
 });
 function suggestTag(type, catId) {
-  if (type === "egreso") return NEEDS_CATS.includes(catId) ? "necesidad" : "gusto";
+  if (type === "egreso" || type === "pasivo") return NEEDS_CATS.includes(catId) ? "necesidad" : "gusto";
   if (type === "activo") return SAVINGS_CATS.includes(catId) ? "ahorro" : null;
   return null;
 }
 function effTag(tx) {
-  return tx.tag || suggestTag(tx.type, tx.catId);
+  return tx.tag || ({needs:'necesidad',wants:'gusto',savings:'ahorro'}[budgetBucket(tx)]||null);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -758,6 +760,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
   const cats = capitalMode?CATS.ingreso.filter(c=>c.id==='aporte_capital'):savingsMode?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[type];
   const [extra, setExtra] = useState({...editing, repeatUnit: editing?.recurrence?.unit || "", repeatEvery: editing?.recurrence?.every || 1, repeatUntil: editing?.recurrence?.until || ""});
   const [catId, setCatId] = useState(editing?.catId || cats[0].id);
+  const [purposeCategory,setPurposeCategory]=useState(()=>{const category=spendingCategory(editing||{});return CATS.egreso.some(c=>c.id===category&&!['deudas','retiro_capital'].includes(c.id))?category:'otro_egreso';});
   const [desc, setDesc] = useState(editing?.desc || "");
   const [date, setDate] = useState(editing ? (editing.date || "") : (initialDate ?? todayISO()));
   const [currency, setCurrency] = useState(editing?.currency || (config.isVenezuela ? "USD" : config.currency.code));
@@ -768,11 +771,12 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
   const [tag, setTagRaw] = useState(editing?.tag ?? suggestTag(type, editing?.catId || cats[0].id));
   const [tagTouched, setTagTouched] = useState(!!editing?.tag);
   const setTag = (v) => { setTagRaw(v); setTagTouched(true); };
-  const showTags = type === "egreso" || type === "activo";
+  const showTags = type === "egreso" || type === "activo" || type === "pasivo";
 
+  const purchaseCategory=type==='pasivo'||['deudas','cashea'].includes(catId)?purposeCategory:catId;
   useEffect(() => {
-    if (!tagTouched) setTagRaw(suggestTag(type, catId));
-  }, [catId]); // eslint-disable-line
+    if (!tagTouched) setTagRaw(suggestTag(type,purchaseCategory));
+  }, [catId,purposeCategory,type]); // eslint-disable-line
 
   const [casheaPlan,setCasheaPlan]=useState({downMode:'percent',down:40,installments:2,everyDays:14,firstDue:''});
   const [settlement,setSettlement]=useState({paid:!!editing?.casheaSettlement,date:editing?.casheaSettlement?.date||todayISO(),manual:!!editing?.casheaSettlement,rate:editing?.casheaSettlement?.rate||'',effectiveRate:editing?.casheaSettlement?.rate||0,amountBS:editing?.casheaSettlement?.amountBS||0});
@@ -791,15 +795,15 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
     if (!canSave) return;
     if(splitCashea){
       const plan=casheaSchedule({...casheaPlan,total:amount,date}),planId=uid();
-      const transactions=plan.payments.map(payment=>({...extra,id:uid(),type:payment.role==='initial'?'egreso':'pasivo',catId:payment.role==='initial'?catId:'cashea',desc:`${desc.trim()||'Cashea'} · ${payment.role==='initial'?(lang==='es'?'Inicial':'Down payment'):`${lang==='es'?'Cuota':'Installment'} ${payment.index}/${plan.installments}`}`,date:payment.date,currency:'USD',amount:payment.amount,rate:null,rateReference:null,referenceRate:null,selectedRate:null,fixedExpense:payment.role==='installment'?true:!!extra.fixedExpense,feeFixed:0,feePercent:0,recurrence:null,repeatUnit:'',paymentMethod:'Cashea',ownerId,private:isPrivate,tag:tag||'necesidad',cashea:{planId,purchaseDate:date,purchaseTotalUSD:plan.total,downUSD:plan.down,installments:plan.installments,everyDays:plan.everyDays,role:payment.role,index:payment.index,nominalUSD:payment.amount,dueDate:payment.date,purchaseCategory:catId},casheaSettlement:null}));
+      const transactions=plan.payments.map(payment=>({...extra,id:uid(),type:payment.role==='initial'?'egreso':'pasivo',catId:payment.role==='initial'?catId:'cashea',expenseCategory:purchaseCategory,desc:`${desc.trim()||'Cashea'} · ${payment.role==='initial'?(lang==='es'?'Inicial':'Down payment'):`${lang==='es'?'Cuota':'Installment'} ${payment.index}/${plan.installments}`}`,date:payment.date,currency:'USD',amount:payment.amount,rate:null,rateReference:null,referenceRate:null,selectedRate:null,fixedExpense:payment.role==='installment'?true:!!extra.fixedExpense,feeFixed:0,feePercent:0,recurrence:null,repeatUnit:'',paymentMethod:'Cashea',ownerId,private:isPrivate,tag:tag||'necesidad',cashea:{planId,purchaseDate:date,purchaseTotalUSD:plan.total,downUSD:plan.down,installments:plan.installments,everyDays:plan.everyDays,role:payment.role,index:payment.index,nominalUSD:payment.amount,dueDate:payment.date,purchaseCategory,purchaseName:desc.trim()||'Cashea'},casheaSettlement:null}));
       onSave(transactions);onClose();return;
     }
     const amt = Number(amount);
     const usedRate = currency === "BS" ? Number(rate) : null;
     onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
-      id: editing ? editing.id : uid(), type, catId, desc: desc.trim(), date, currency,
-      amount: amt, ...(editing?.cashea?{currency:'USD',date:settlement.paid?settlement.date:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date),cashea:{...editing.cashea,nominalUSD:amt,dueDate:settlement.paid?editing.cashea.dueDate:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date)},casheaSettlement:settlement.paid?{date:settlement.date,rate:settlement.effectiveRate,rateDate:settlement.rateDate,amountBS:settlement.amountBS}:null}:{}), rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
+      id: editing ? editing.id : uid(), type, catId, expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null, desc: desc.trim(), date, currency,
+      amount: amt, ...(editing?.cashea?{currency:'USD',date:settlement.paid?settlement.date:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date),cashea:{...editing.cashea,purchaseCategory,nominalUSD:amt,dueDate:settlement.paid?editing.cashea.dueDate:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date)},casheaSettlement:settlement.paid?{date:settlement.date,rate:settlement.effectiveRate,rateDate:settlement.rateDate,amountBS:settlement.amountBS}:null}:{}), rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
   };
@@ -817,7 +821,7 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
 
         <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" disabled={!!editing?.cashea} className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
         <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p>
-        <label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
+        {type!=='pasivo'&&<><label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
           {cats.map((c) => (
             <button key={c.id} onClick={() => setCatId(c.id)}
@@ -829,6 +833,8 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           ))}
         </div>
 
+        </>}
+        {(type==='pasivo'||type==='egreso'&&['deudas','cashea'].includes(catId))&&<div className="quanto-expense-purpose"><label htmlFor="tx-expense-purpose">{lang==='es'?'Categoría del gasto':'Expense category'}</label><select id="tx-expense-purpose" value={CATS.egreso.some(c=>c.id===purposeCategory)?purposeCategory:'otro_egreso'} onChange={e=>setPurposeCategory(e.target.value)}>{CATS.egreso.filter(c=>!['deudas','retiro_capital'].includes(c.id)).map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select><p>{lang==='es'?'La categoría indica en qué gastaste. Cashea es el método de pago y Deuda / cuota indica que es un egreso financiado. Se registra una sola vez.':'The category describes what you bought. Cashea is the payment method and Debt / installment identifies a financed outflow. It is recorded only once.'}</p></div>}
         <label htmlFor="tx-desc" className="text-xs" style={{ color: C.muted }}>{t("description")} ({lang === "es" ? "opcional" : "optional"})</label>
         <input id="tx-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={lang==="es"?"Ej. Compra semanal (opcional)":"e.g. Weekly groceries (optional)"}
           className="w-full mt-1.5 mb-3 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
@@ -977,7 +983,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const pieData = useMemo(() => {
     const byCat = {};
     visibleTx.filter((tx) => isExpense(tx) && inPeriod(tx, cycle)).forEach((tx) => {
-      const key = tx.customCategory || tx.catId; byCat[key] = (byCat[key] || 0) + toUSD(tx);
+      const key = tx.customCategory || spendingCategory(tx); byCat[key] = (byCat[key] || 0) + toUSD(tx);
     });
     return Object.entries(byCat).map(([catId, value]) => {
       const cat = [...CATS.egreso,...CATS.pasivo].find((c) => c.id === catId);
@@ -1060,7 +1066,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         <header className="quanto-account-toolbar" aria-label={lang==='es'?'Cuenta y preferencias':'Account and preferences'}>
           <div className="quanto-mobile-brand md:hidden"><Logo height={28}/></div>
           <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
-          <div className="quanto-account-actions"><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
+          <div className="quanto-account-actions"><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={()=>setTab("calendar")} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
         </header>
         <div className="flex md:hidden gap-1.5 mb-5 overflow-x-auto pb-1">
           {NAV.map((n) => (
@@ -1078,8 +1084,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
-        <LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} lang={lang}/>
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=CATS[tx.type]?.find(c=>c.id===tx.catId);return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
+        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=(isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]||[]).find(c=>c.id===spendingCategory(tx));return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <div>
@@ -1233,7 +1238,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                   {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
                     .sort((a, b) => (a.date < b.date ? 1 : -1))
                     .map((tx) => {
-                      const cat = CATS[tx.type].find((c) => c.id === tx.catId);
+                      const cat = (isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]).find((c) => c.id === spendingCategory(tx));
                       const yellow=isDebtOrCashea(tx);
                       const meta = yellow?{...TYPE_META[tx.type],color:theme==='dark'?'#facc15':'#987400'}:TYPE_META[tx.type];
                       const owner = memberOf(tx.ownerId);
@@ -1278,8 +1283,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "budget" && <BudgetPlanner records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
-        {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} onEdit={openTx}/>}
+        {tab === "budget" && <BudgetPlanner key={config.cycleDay||1} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
+        {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} categoryLabel={tx=>{const category=[...CATS.egreso,...CATS.pasivo].find(c=>c.id===spendingCategory(tx));return category?(lang==='es'?category.es:category.en):'';}} onEdit={openTx}/>}
 
         {tab === "rates" && config.isVenezuela && (
           <CustomRates lang={lang} rates={records.rates} saveRates={rates => saveRecords({...records,rates})} />

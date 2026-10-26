@@ -30,3 +30,16 @@ export function registeredDebts(records,config,today){
  const entries=[...expandTransactions(records.transactions.filter(isDebtPayment),'1970-01-01',end,records.exceptions||{}),...records.transactions.filter(tx=>isDebtPayment(tx)&&!tx.date)];
  return entries.map(tx=>({id:`ledger:${tx.id}`,name:tx.desc||tx.paymentMethod||'Deuda',balance:transactionValue(tx,config.isVenezuela),installment:transactionValue(tx,config.isVenezuela),nextDue:tx.date||'',everyDays:1,scheduledOnly:true,method:tx.paymentMethod||'',paid:!!(tx.debtPaid||tx.casheaSettlement),tx}));
 }
+
+export function groupRegisteredDebts(entries,today){
+ const grouped=new Map();
+ for(const entry of entries){
+  const tx=entry.tx,key=tx.cashea?.planId?`cashea:${tx.cashea.planId}`:tx.seriesId?`series:${tx.seriesId}`:entry.id;
+  if(!grouped.has(key))grouped.set(key,{id:key,name:tx.cashea?.purchaseName||entry.name.replace(/\s*·\s*(?:Cuota\s+\d+\/\d+|Installment\s+\d+\/\d+|Inicial|Down payment)\s*$/i,''),method:entry.method,items:[]});
+  grouped.get(key).items.push(entry);
+ }
+ return [...grouped.values()].map(group=>{
+  const items=group.items.sort((a,b)=>(a.nextDue||'9999').localeCompare(b.nextDue||'9999')),pending=items.filter(item=>!item.paid),next=pending.find(item=>item.nextDue)||pending[0];
+  return {...group,items,pending,next,balance:pending.reduce((n,item)=>n+item.balance,0),paidCount:items.length-pending.length,overdue:pending.filter(item=>item.nextDue&&item.nextDue<today).reduce((n,item)=>n+item.balance,0)};
+ }).sort((a,b)=>(a.next?.nextDue||'9999').localeCompare(b.next?.nextDue||'9999')||a.name.localeCompare(b.name));
+}

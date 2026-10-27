@@ -1,6 +1,6 @@
 import {isExpense,spendingCategory,inPeriod,transactionValue} from './finance.js';
 import {normalizeLabels} from './classification.js';
-export const chartCategory=tx=>tx.expenseCategory?spendingCategory(tx):tx.customCategory||spendingCategory(tx);
+export const chartCategory=tx=>{const category=spendingCategory(tx);return !category||['deudas','cashea'].includes(category)?'uncategorized':category;};
 // Split integer cents so multi-label entries conserve the category total exactly.
 export function labelSpending(transactions,category,bounds,venezuela){
  const groups=new Map();let total=0,count=0;

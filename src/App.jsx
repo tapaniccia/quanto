@@ -25,6 +25,7 @@ import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
 import "./refinements.css";
 import LabelSpending from './LabelSpending.jsx';
+import {chartCategory} from './labelSpending.js';
 import TransactionClassification from "./TransactionClassification.jsx";
 import {labelCategory,personalLabelCatalog,updateClassification} from "./classification.js";
 
@@ -367,7 +368,7 @@ const CATS = {
   ],
   egreso: [
     { id: "vivienda", icon: Home, es: "Vivienda", en: "Housing", tipEs: "Alquiler, cuota, servicios, mantenimiento.", tipEn: "Rent, mortgage payment, utilities, upkeep." },
-    { id: "alimentacion", icon: Utensils, es: "Alimentación", en: "Food", tipEs: "Mercado y comidas fuera de casa.", tipEn: "Groceries and eating out." },
+    { id: "alimentacion", icon: Utensils, es: "Mercado", en: "Groceries", tipEs: "Compras de víveres, carnes, verduras y otros productos del mercado.", tipEn: "Groceries, meat, vegetables and other market purchases." },
     { id: "transporte", icon: Car, es: "Transporte", en: "Transportation", tipEs: "Gasolina, transporte público, mantenimiento del vehículo.", tipEn: "Gas, public transit, vehicle upkeep." },
     { id: "vehiculo", icon: Car, es: "Vehículo", en: "Vehicle", tipEs: "Compra, repuestos, reparaciones y accesorios del vehículo.", tipEn: "Vehicle purchase, parts, repairs and accessories." },
     { id: "salud", icon: HeartPulse, es: "Salud", en: "Health", tipEs: "Médicos, medicinas, seguro de salud.", tipEn: "Doctors, medicine, health insurance." },
@@ -987,11 +988,11 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const pieData = useMemo(() => {
     const byCat = {};
     visibleTx.filter((tx) => isExpense(tx) && inPeriod(tx, cycle)).forEach((tx) => {
-      const key = tx.expenseCategory?spendingCategory(tx):tx.customCategory || spendingCategory(tx); byCat[key] = (byCat[key] || 0) + toUSD(tx);
+      const key = chartCategory(tx); byCat[key] = (byCat[key] || 0) + toUSD(tx);
     });
     return Object.entries(byCat).map(([catId, value]) => {
       const cat = [...CATS.egreso,...CATS.pasivo].find((c) => c.id === catId);
-      return { name: cat ? (lang === "es" ? cat.es : cat.en) : catId, value: Number(value.toFixed(2)) };
+      return { name: catId === "uncategorized" ? (lang === "es" ? "Sin categoría" : "Uncategorized") : cat ? (lang === "es" ? cat.es : cat.en) : catId, value: Number(value.toFixed(2)) };
     });
   }, [visibleTx, toUSD, monthKey, lang, config.cycleDay]);
 

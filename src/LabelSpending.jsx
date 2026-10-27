@@ -1,9 +1,16 @@
 import React,{useMemo,useState} from 'react';
 import {PieChart,Pie,Cell,ResponsiveContainer,Tooltip} from 'recharts';
-import {labelSpending,chartCategory} from './labelSpending.js';
-import {isExpense,inPeriod} from './finance.js';
-export default function LabelSpending({transactions,bounds,venezuela,lang,categories,C,money}){
+import {labelSpending,chartCategory,labelPeriod} from './labelSpending.js';
+import {isExpense,inPeriod,iso,parseDate} from './finance.js';
+export default function LabelSpending({transactions,bounds:initialBounds,cycleDay=1,venezuela,lang,categories,C,money}){
  const es=lang==='es';const [selected,setSelected]=useState('alimentacion');
+ const today=iso(new Date());
+ const [mode,setMode]=useState('cycle'),[anchor,setAnchor]=useState(today),[from,setFrom]=useState(initialBounds.start),[through,setThrough]=useState(today);
+ const selectedBounds=labelPeriod(mode,anchor,cycleDay,from,through),valid=!!selectedBounds;
+ const bounds=selectedBounds||{start:'9999-01-01',end:'9999-01-01'};
+ const fieldStyle={background:C.card,color:C.text,borderColor:C.border,minHeight:44,width:'100%',minWidth:0};
+ const periodNames=es?[['cycle','Ciclo de cobro'],['week','Semana'],['month','Mes'],['quarter','Trimestre'],['year','Año'],['custom','Rango de fechas']]:[['cycle','Pay cycle'],['week','Week'],['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Date range']];
+ const move=direction=>{const d=parseDate(anchor);if(mode==='week')d.setDate(d.getDate()+direction*7);else if(mode==='year')d.setFullYear(d.getFullYear()+direction);else {const offset=mode==='quarter'?3:1;const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+direction*offset);d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));}setAnchor(iso(d));};
  const options=useMemo(()=>{const list=categories.filter(c=>!['deudas','cashea'].includes(c.id)).map(c=>({id:c.id,name:es?c.es:c.en}));for(const tx of transactions){const id=chartCategory(tx);if(isExpense(tx)&&inPeriod(tx,bounds)&&id&&!list.some(c=>c.id===id))list.push({id,name:id==='uncategorized'?(es?'Sin categoría':'Uncategorized'):id});}return list;},[categories,transactions,bounds.start,bounds.end,es]);
  const category=options.some(c=>c.id===selected)?selected:options[0]?.id;
  const result=useMemo(()=>labelSpending(transactions,category,bounds,venezuela),[transactions,category,bounds.start,bounds.end,venezuela]);
@@ -14,12 +21,19 @@ export default function LabelSpending({transactions,bounds,venezuela,lang,catego
  const date=value=>new Date(value+'T12:00:00').toLocaleDateString(es?'es-ES':'en-US',{day:'numeric',month:'short',year:'numeric'});
  return <section aria-labelledby="label-spending-title">
   <h2 id="label-spending-title" className="text-base font-semibold" style={{color:C.text}}>{es?'Gastos por etiqueta':'Expenses by label'}</h2>
-  <p className="text-xs mt-1" style={{color:C.muted}}>{es?'Ciclo actual':'Current cycle'}: {date(bounds.start)} – {date(end.toISOString().slice(0,10))}</p>
+  <p className="text-xs mt-1" style={{color:C.muted}}>{valid?date(bounds.start)+' – '+date(iso(end)):(es?'Selecciona un rango válido':'Select a valid range')}</p>
+  <div className="grid sm:grid-cols-2 gap-3 mt-4">
+   <label className="block text-sm" style={{color:C.text}}>{es?'Período de la gráfica':'Chart period'}<select aria-label={es?'Período de la gráfica':'Chart period'} className="block rounded-lg border p-3 mt-2" style={fieldStyle} value={mode} onChange={e=>setMode(e.target.value)}>{periodNames.map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label>
+   {mode!=='custom'&&<label className="block text-sm" style={{color:C.text}}>{es?'Fecha dentro del período':'Date within the period'}<input aria-label={es?'Fecha dentro del período':'Date within the period'} type="date" value={anchor} onChange={e=>setAnchor(e.target.value)} className="block rounded-lg border p-3 mt-2" style={fieldStyle}/></label>}
+   {mode==='custom'&&<><label className="block text-sm" style={{color:C.text}}>{es?'Desde':'From'}<input aria-label={es?'Desde':'From'} type="date" value={from} onChange={e=>setFrom(e.target.value)} className="block rounded-lg border p-3 mt-2" style={fieldStyle}/></label><label className="block text-sm" style={{color:C.text}}>{es?'Hasta (incluido)':'Through (inclusive)'}<input aria-label={es?'Hasta (incluido)':'Through (inclusive)'} type="date" value={through} onChange={e=>setThrough(e.target.value)} className="block rounded-lg border p-3 mt-2" style={fieldStyle}/></label></>}
+  </div>
+  {mode!=='custom'&&<div className="flex flex-wrap gap-2 mt-3"><button type="button" disabled={!anchor} className="border rounded-lg px-3 py-2 text-sm" style={{color:C.text,borderColor:C.border,minHeight:44}} onClick={()=>move(-1)}>{es?'← Anterior':'← Previous'}</button><button type="button" disabled={!anchor} className="border rounded-lg px-3 py-2 text-sm" style={{color:C.text,borderColor:C.border,minHeight:44}} onClick={()=>move(1)}>{es?'Siguiente →':'Next →'}</button><button type="button" className="border rounded-lg px-3 py-2 text-sm" style={{color:C.text,borderColor:C.border,minHeight:44}} onClick={()=>setAnchor(today)}>{es?'Actual':'Current'}</button></div>}
+  {!valid&&<p role="alert" className="text-sm mt-3" style={{color:C.red}}>{es?'Completa las fechas; Desde debe ser anterior o igual a Hasta.':'Complete the dates; From must be on or before Through.'}</p>}
   <label htmlFor="label-spending-category" className="block text-sm mt-4" style={{color:C.text}}>{es?'Categoría del gasto':'Expense category'}</label>
   <select id="label-spending-category" className="w-full mt-2 rounded-lg border p-3" style={{background:C.card,color:C.text,borderColor:C.border,minHeight:44}} value={category||''} onChange={e=>setSelected(e.target.value)}>{options.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
   <p className="text-2xl font-semibold mt-4" style={{color:C.teal}}>{money(result.total)}</p>
-  <p className="text-xs mt-1" style={{color:C.muted}}>{es?'Total de la categoría registrado hasta hoy':'Category total recorded through today'}</p>
-  {!data.length?<p className="text-sm py-8" role="status" style={{color:C.muted}}>{es?'No hay gastos en esta categoría durante este ciclo. Agrega movimientos o elige otra categoría.':'No expenses in this category during this cycle. Add transactions or choose another category.'}</p>:<>
+  <p className="text-xs mt-1" style={{color:C.muted}}>{es?'Total de la categoría en el período (hasta hoy)':'Category total in this period (through today)'}</p>
+  {!data.length?<p className="text-sm py-8" role="status" style={{color:C.muted}}>{es?'No hay gastos en esta categoría durante este período. Agrega movimientos o elige otra categoría.':'No expenses in this category during this period. Add transactions or choose another category.'}</p>:<>
    <div role="img" aria-label={data.map(d=>d.name+': '+money(d.value)+' ('+percentage(d.percent)+')').join('; ')}><ResponsiveContainer width="100%" height={240}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={95} paddingAngle={2} isAnimationActive={false}>{data.map((d,i)=><Cell key={d.key} fill={colors[i%colors.length]}/>)}</Pie><Tooltip contentStyle={{background:C.card,color:C.text,border:'1px solid '+C.border,borderRadius:8}} formatter={(value,name,item)=>[money(value)+' · '+percentage(item.payload.percent),name]}/></PieChart></ResponsiveContainer></div>
    <ul className="space-y-3">{data.map((d,i)=><li key={d.key} className="flex items-center gap-2 text-sm" style={{color:C.text}}><span aria-hidden="true" className="w-3 h-3 rounded-full shrink-0" style={{background:colors[i%colors.length]}}/><span className="flex-1 min-w-0" style={{overflowWrap:'anywhere'}}>{d.name}</span><span className="text-right shrink-0">{money(d.value)}<span className="block text-xs" style={{color:C.muted}}>{percentage(d.percent)}</span></span></li>)}</ul>
   </>}

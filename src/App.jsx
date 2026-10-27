@@ -25,6 +25,7 @@ import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
 import "./refinements.css";
 import LabelSpending from './LabelSpending.jsx';
+import MobileNav from './MobileNav.jsx';
 import {chartCategory} from './labelSpending.js';
 import TransactionClassification from "./TransactionClassification.jsx";
 import {labelCategory,personalLabelCatalog,updateClassification} from "./classification.js";
@@ -1074,14 +1075,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
           <div className="quanto-account-actions"><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={()=>setTab("calendar")} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
         </header>
-        <div className="flex md:hidden gap-1.5 mb-5 overflow-x-auto pb-1">
-          {NAV.map((n) => (
-            <button key={n.id} onClick={() => setTab(n.id)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap font-medium"
-              style={{ background: tab === n.id ? C.grad : C.card, color: tab === n.id ? "#fff" : C.muted, border: `1px solid ${C.border}` }}>
-              <n.icon size={13} /> {n.label}
-            </button>
-          ))}
-        </div>
+        <MobileNav items={NAV} active={tab} onChange={setTab} lang={lang} C={C}/>
 
         {config.isVenezuela && latestRate && (
           <div className="mb-5 flex items-center gap-2 px-4 py-2 rounded-full text-xs w-fit" style={{ background: C.card2, color: C.goldSoft, ...mono }}>
@@ -1150,8 +1144,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               </div>
             </Card>
 
-            <Comparison theme={theme} transactions={visibleTx} config={config} lang={lang} />
-            <Card><LabelSpending transactions={visibleTx} bounds={cycle} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
+            <Card><LabelSpending transactions={visibleTx} bounds={cycle} cycleDay={config.cycleDay||1} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("expensesByCategory")}</p>
@@ -1189,6 +1182,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 </ResponsiveContainer>
               </Card>
             </div>
+            <Comparison theme={theme} transactions={visibleTx} config={config} lang={lang} />
           </div>
         )}
 

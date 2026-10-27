@@ -1,0 +1,42 @@
+.quanto-app .quanto-transaction-row{display:grid!important;grid-template-columns:24px minmax(0,1fr) auto;gap:10px 16px!important;padding:18px 20px!important;align-items:start}
+.quanto-app .quanto-transaction-row>.quanto-row-icon{grid-column:1;grid-row:1;align-self:start;margin-top:3px}
+.quanto-app .quanto-transaction-row>.quanto-row-summary{grid-column:2;grid-row:1;min-width:0}
+.quanto-row-summary>p{font-weight:550;line-height:1.6}
+.quanto-row-meta{font-size:12px;line-height:1.7;margin-top:5px;min-width:0;overflow-wrap:anywhere}
+.quanto-row-meta>span{font-size:11px}
+.quanto-row-owner{display:inline-flex;align-items:center;gap:5px;margin-left:4px;font-size:11px}
+.quanto-app .quanto-transaction-row>.quanto-row-amount{display:block!important;grid-column:3;grid-row:1;min-width:90px}
+.quanto-app .quanto-transaction-row>.quanto-row-classification{display:flex;grid-column:2;grid-row:2;align-self:start;min-width:0}
+.quanto-app .quanto-transaction-row>.quanto-row-actions{grid-column:3;grid-row:2;display:flex;align-items:center;justify-content:flex-end;gap:8px;align-self:end}
+.quanto-row-actions>button{margin:0!important;min-width:44px;min-height:44px;border-radius:8px}
+.quanto-row-classification{position:relative;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.quanto-inline-category{display:grid;gap:7px;max-width:100%;flex:0 1 190px}
+.quanto-inline-category>span,.quanto-inline-label-title{display:block;font-size:12px;font-weight:550;line-height:1.5}
+.quanto-inline-category select{display:block;width:100%;min-height:44px;border:1px solid var(--surface-border);border-radius:9px;background:var(--surface-raised);color:inherit;padding:9px 30px 9px 11px;font-size:14px;max-width:100%}
+.quanto-inline-labels{min-width:0;flex:1 1 220px}
+.quanto-label-selection{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;min-height:44px}
+.quanto-personal-label{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-height:36px;padding:0 1px 0 9px;border-radius:8px;background:var(--tone-activo);font-size:12px;line-height:1.5}
+.quanto-personal-label>span{overflow-wrap:anywhere;max-width:170px}
+.quanto-app .quanto-personal-label>button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border:0;padding:8px;color:inherit;background:transparent;border-radius:7px}
+.quanto-app .quanto-label-trigger{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:9px 12px;font-size:12px;border:1px solid var(--surface-border);border-radius:9px;background:transparent;color:inherit;white-space:nowrap}
+.quanto-label-trigger:hover,.quanto-row-actions>button:hover,.quanto-personal-label>button:hover{background:#60aa7917}
+.quanto-label-popover{position:absolute;top:calc(100% + 10px);left:0;width:min(380px,calc(100vw - 48px));max-height:min(540px,70dvh);overflow-y:auto;padding:18px;border:1px solid var(--surface-border);border-radius:16px;background:var(--surface-raised);color:inherit;box-shadow:0 14px 42px #10261929;z-index:35}
+.quanto-label-popover>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.quanto-label-popover h3{font-size:16px;font-weight:650;line-height:1.5}
+.quanto-label-popover header p{font-size:12px;line-height:1.6;opacity:.75;margin-top:4px}
+.quanto-label-popover header button{min-width:44px;min-height:44px;display:grid;place-items:center;border:0;background:transparent;color:inherit;border-radius:8px}
+.quanto-label-search{display:flex;align-items:center;gap:10px;border:1px solid var(--surface-border);border-radius:9px;padding:0 12px;margin-bottom:12px}
+.quanto-label-search input{background:transparent;color:inherit;border:0;width:100%;min-width:0;min-height:46px;font-size:16px;outline:none}
+.quanto-label-search:focus-within{outline:2px solid #23835a;outline-offset:2px}
+.quanto-label-options{max-height:200px;overflow-y:auto;display:grid;gap:4px}
+.quanto-label-options>label{display:flex;align-items:center;gap:12px;min-height:44px;padding:9px 6px;cursor:pointer;font-size:14px;line-height:1.5;border-radius:8px;overflow-wrap:anywhere}
+.quanto-label-options>label:hover{background:#60aa7917}
+.quanto-label-options input{width:18px;height:18px;min-width:18px;accent-color:#147746}
+.quanto-label-options>p,.quanto-label-help{font-size:12px;line-height:1.7;opacity:.75;margin:10px 0}
+.quanto-app .quanto-label-create{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;border:1px solid #23835a55;border-radius:9px;min-height:44px;font-size:13px;line-height:1.5;margin:10px 0;padding:10px 12px;background:var(--tone-ingreso);color:inherit;overflow-wrap:anywhere}
+.quanto-inline-category select:focus-visible,.quanto-row-classification button:focus-visible,.quanto-label-options input:focus-visible{outline:2px solid #23835a;outline-offset:3px}
+.quanto-event-personal-labels{font-size:11px;line-height:1.6;overflow-wrap:anywhere;opacity:.8}
+@media(max-width:1000px){.quanto-app .quanto-transaction-row>.quanto-row-classification{grid-column:2/4}.quanto-app .quanto-transaction-row>.quanto-row-actions{grid-row:3;grid-column:2/4}}
+@media(max-width:700px){.quanto-app .quanto-transaction-row{grid-template-columns:24px minmax(0,1fr) auto;gap:10px 10px!important;padding:16px!important}.quanto-app .quanto-transaction-row>.quanto-row-icon{grid-column:1;grid-row:1}.quanto-app .quanto-transaction-row>.quanto-row-summary{grid-column:2;grid-row:1}.quanto-app .quanto-transaction-row>.quanto-row-amount{grid-column:3;grid-row:1;min-width:70px;max-width:120px}.quanto-app .quanto-transaction-row>.quanto-row-classification{grid-column:1/-1;grid-row:2;gap:12px}.quanto-app .quanto-transaction-row>.quanto-row-actions{grid-column:1/-1;grid-row:3;justify-content:flex-end}.quanto-inline-category{flex:1 1 150px}.quanto-inline-category select{font-size:16px}.quanto-inline-labels{flex:1 1 180px}.quanto-label-popover{left:0;right:0;width:auto;max-height:65dvh}.quanto-personal-label>span{max-width:145px}.quanto-app .quanto-personal-label>button{min-height:44px;min-width:44px}.quanto-row-meta{font-size:11px}.quanto-row-amount .quanto-cashea-quote{font-size:10px}}
+
+.quanto-app .quanto-label-search input,.quanto-app .quanto-label-search input:focus{border:0!important;box-shadow:none!important;outline:none!important;border-radius:0;padding:0;background:transparent}

@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
 import {iso,parseDate,periodBounds,inPeriod,transactionValue,expandTransactions,calendarBalances,shiftCalendarMonth,isDebtTransaction} from './finance.js';
 import './planning.css';
+import {normalizeLabels} from './classification.js';
 import {CasheaAmount} from './CasheaFields.jsx';
 import {historyBounds,historyRows,samePeriod} from './history.js';
 import {ResponsiveContainer,BarChart,Bar,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ReferenceLine} from 'recharts';
@@ -81,7 +82,7 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
         <span className="quanto-event-kind"><i aria-hidden="true"/>{eventLabel(t.type,es,t.tag)}{t.seriesId&&<span title={text('Recurrente','Recurring')}> · ↻</span>}</span>
         <strong>{t.desc||t.customCategory||categoryLabel?.(t)||eventLabel(t.type,es,t.tag)}</strong>
         <span className="quanto-event-amount">{['egreso','pasivo'].includes(t.type)?'−':t.type==='ingreso'?'+':''}{money(transactionValue(t,config.isVenezuela))}</span>
-        <span className="quanto-event-category">{categoryLabel?.(t)}</span>
+        <span className="quanto-event-category">{categoryLabel?.(t)}</span>{normalizeLabels(t.labels).length>0&&<small className="quanto-event-personal-labels">{normalizeLabels(t.labels).join(' / ')}</small>}
         <CasheaAmount tx={t} rates={records.rates} lang={lang}/>{t.currency==='BS'&&t.rateReference&&t.rateReference!=='USD'&&t.referenceRate>0&&<small>{(transactionValue(t,config.isVenezuela)*Number(t.rate)/Number(t.referenceRate)).toFixed(2)} {t.rateReference} · {text('Referencia','Reference')} {t.referenceDate||t.date}</small>}
       </button>
       {!t.casheaSettlement&&<details className="quanto-event-actions"><summary>{text('Cambiar fecha','Reschedule')}</summary><label>{text('Fecha del movimiento','Transaction date')}<input type="date" value={t.date||''} onChange={e=>{if(e.target.value||!t.seriesId)reschedule(t.id,e.target.value);}}/></label></details>}

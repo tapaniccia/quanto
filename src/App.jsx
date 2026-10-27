@@ -24,6 +24,8 @@ import {isUsdRate} from "./exchangeRates.js";
 import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
 import "./refinements.css";
+import TransactionClassification from "./TransactionClassification.jsx";
+import {labelCategory,personalLabelCatalog,updateClassification} from "./classification.js";
 
 /* ---------------------------------------------------------------------- */
 /*  Design tokens (dark + light)                                           */
@@ -945,6 +947,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const allVisible = useMemo(() => records.transactions.filter(tx => !tx.private || tx.ownerId === currentUser.id), [records.transactions, currentUser.id]);
   const [listMonth,setListMonth]=useState(todayISO().slice(0,7));
   const listVisible=useMemo(()=>{const b=periodBounds(`${listMonth}-01`);return [...expandTransactions(allVisible,b.start,b.end,records.exceptions||{}),...allVisible.filter(tx=>!tx.date)];},[allVisible,records.exceptions,listMonth]);
+  const personalLabels=useMemo(()=>personalLabelCatalog(records,currentUser.id),[records.transactions,records.exceptions,records.labelCatalog,currentUser.id]);
   const [txFilter, setTxFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState(null);
@@ -983,7 +986,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const pieData = useMemo(() => {
     const byCat = {};
     visibleTx.filter((tx) => isExpense(tx) && inPeriod(tx, cycle)).forEach((tx) => {
-      const key = tx.customCategory || spendingCategory(tx); byCat[key] = (byCat[key] || 0) + toUSD(tx);
+      const key = tx.expenseCategory?spendingCategory(tx):tx.customCategory || spendingCategory(tx); byCat[key] = (byCat[key] || 0) + toUSD(tx);
     });
     return Object.entries(byCat).map(([catId, value]) => {
       const cat = [...CATS.egreso,...CATS.pasivo].find((c) => c.id === catId);
@@ -1032,6 +1035,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     const exceptions={...current.exceptions};for(const tx of inputs.filter(tx=>tx.seriesId)){const {recurrence,repeatUnit,repeatEvery,repeatUntil,...patch}=tx;exceptions[tx.id]={...exceptions[tx.id],...patch};}const value={...current,transactions:next,exceptions};latestRecords.current=value;saveRecords(value);
     showToast(Array.isArray(input)?`${payments.length} ${lang==='es'?'pagos Cashea guardados.':'Cashea payments saved.'}`:t('txSaved'));
   };
+  const saveClassification=(id,change)=>{const current=latestRecords.current,next=updateClassification(current,id,change,currentUser.id);if(next===current)return;latestRecords.current=next;saveRecords(next);showToast(t('txSaved'));};
   const openTx=tx=>{setCalendarOccurrence(tx.seriesId?tx:null);setInitialDate(undefined);setEditingTx(tx.seriesId?{...tx,recurrence:null,repeatUnit:''}:tx);setModalType(tx.type);};
   const duplicateTx=tx=>{const {seriesId,skipped,cashea,casheaSettlement,debtPaid,repeatUnit,repeatEvery,repeatUntil,...copy}=tx;setCalendarOccurrence(null);setInitialDate(undefined);setEditingTx({...copy,id:uid(),recurrence:null,repeatUnit:'',casheaSettlement:null,debtPaid:false});setModalType(tx.type);};
   const delTx = (id) => {
@@ -1227,7 +1231,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
             <label className="flex gap-3 items-center mb-4">{lang==='es'?'Mes de los movimientos':'Transaction month'}<input type="month" value={listMonth} onChange={e=>{if(e.target.value)setListMonth(e.target.value);}} style={{background:C.card,color:C.text,border:`1px solid ${C.border}`,padding:10,borderRadius:8}}/></label>
             <p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Mismos movimientos y fechas que el calendario, incluidas las recurrencias. Los pendientes sin fecha también aparecen aquí.':'Same transactions and dates as the calendar, including recurring occurrences. Undated transactions appear here too.'}</p>
             <Card style={{ padding: 0 }}>
-              {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
+              {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,spendingCategory(tx),[...CATS.ingreso,...CATS.egreso,...CATS.activo,...CATS.pasivo].find(c=>c.id===spendingCategory(tx))?.[lang==='es'?'es':'en']].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
                 <div className="py-12 text-center">
                   <Receipt size={24} className="mx-auto mb-2" style={{ color: C.muted, opacity: 0.6 }} />
                   <p className="text-sm" style={{ color: C.muted }}>{t("noTx")}</p>
@@ -1235,7 +1239,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: C.border }}>
-                  {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
+                  {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,spendingCategory(tx),[...CATS.ingreso,...CATS.egreso,...CATS.activo,...CATS.pasivo].find(c=>c.id===spendingCategory(tx))?.[lang==='es'?'es':'en']].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
                     .sort((a, b) => (a.date < b.date ? 1 : -1))
                     .map((tx) => {
                       const cat = (isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]).find((c) => c.id === spendingCategory(tx));
@@ -1246,34 +1250,37 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                       const rowTag = effTag(tx);
                       return (
                         <div key={tx.id} className="quanto-transaction-row flex items-center gap-3 px-4 py-3" style={{ background:yellow?'#eab30814':undefined,borderLeft:`3px solid ${yellow?'#eab308':meta.color}`, borderTop: `1px solid ${C.border}` }}>
-                          <div className="quanto-bare-icon flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
+                          <div className="quanto-row-icon quanto-bare-icon flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
                             {cat && <cat.icon size={15} style={{ color: meta.color }} />}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="quanto-row-summary flex-1 min-w-0">
                             <p className="text-sm truncate" style={{ color: C.text }}>{tx.desc || tx.customCategory || (cat ? (lang === "es" ? cat.es : cat.en) : "")}</p>
-                            <p className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: C.muted }}>
-                              {tx.customCategory || (cat ? (lang === "es" ? cat.es : cat.en) : "")} · {tx.date || (lang === "es" ? "Sin fecha" : "Unscheduled")} · {[tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,tx.recurrence ? "↻" : ""].filter(Boolean).join(" · ")}
+                            <div className="quanto-row-meta flex items-center gap-1.5 flex-wrap" style={{ color: C.muted }}>
+                              {tx.date || (lang === "es" ? "Sin fecha" : "Unscheduled")} · {[tx.beneficiary,tx.group,tx.paymentMethod,tx.recurrence ? "↻" : ""].filter(Boolean).join(" · ")}
                               {tx.private && <Lock size={10} />}
                               {rowTag && (
                                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ background: `${TAG_META[rowTag].color}1F`, color: TAG_META[rowTag].color }}>
                                   {t(TAG_INFO[rowTag].labelKey)}
                                 </span>
                               )}
-                            </p>
+                              {owner&&<div className="quanto-row-owner"><Avatar m={owner} size={18}/><span>{owner.name}</span></div>}
+                            </div>
                           </div>
-                          {owner && <Avatar m={owner} size={20} />}
-                          <div className="text-right shrink-0">
+                          <div className="quanto-row-amount text-right shrink-0">
                             <p className="text-sm font-medium" style={{ ...mono, color: meta.color }}>
                               {tx.type === "egreso" || tx.type === "pasivo" ? "-" : "+"}{config.isVenezuela ? `$${fmt(usd)}` : money(usd)}
                             </p>
                             <CasheaAmount tx={tx} rates={records.rates} lang={lang}/>{config.isVenezuela && tx.currency === "BS" && <p className="text-[10px]" style={{ color: C.muted }}>{fmt(tx.amount)} Bs @ {fmt(tx.rate)} {tx.rateName || ""}</p>}
                             {config.isVenezuela&&tx.currency==='BS'&&tx.rateReference&&tx.rateReference!=='USD'&&tx.referenceRate>0&&<p className="text-[11px]" style={{color:C.muted}}>{fmt(usd*Number(tx.rate)/Number(tx.referenceRate))} {tx.rateReference}</p>}
                           </div>
+                          <TransactionClassification tx={tx} lang={lang} categories={(isExpense(tx)?CATS.egreso:CATS[tx.type]).map(c=>({id:c.id,label:lang==='es'?c.es:c.en}))} categoryId={spendingCategory(tx)} categoryName={cat?(lang==='es'?cat.es:cat.en):(lang==='es'?'Sin categoría de gasto':'Uncategorized expense')} options={personalLabels[labelCategory(tx)]||[]} onChange={change=>saveClassification(tx.id,change)}/>
+                          <div className="quanto-row-actions">
                           <button className="p-2 text-xs" aria-label={lang === "es" ? "Duplicar transacción" : "Duplicate transaction"} onClick={() => duplicateTx(tx)}>{lang === "es" ? "Duplicar" : "Duplicate"}</button>
                           <button onClick={() => openTx(tx)} aria-label={t("editEntryAction")}
                             className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Pencil size={14} style={{ color: C.muted }} /></button>
                           <button onClick={() => tx.seriesId?setConfirmOccurrence(tx):setConfirmDeleteTxId(tx.id)} aria-label={t("deleteEntry")}
                             className="shrink-0 p-2 -m-0.5 rounded-lg hover:bg-black/5 transition-colors"><Trash2 size={14} style={{ color: C.muted }} /></button>
+                          </div>
                         </div>
                       );
                     })}

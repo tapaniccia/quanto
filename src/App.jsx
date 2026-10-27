@@ -1144,7 +1144,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               </div>
             </Card>
 
-            <Card><LabelSpending transactions={visibleTx} bounds={cycle} cycleDay={config.cycleDay||1} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
+            <Card><LabelSpending transactions={allVisible} exceptions={records.exceptions||{}} bounds={cycle} cycleDay={config.cycleDay||1} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("expensesByCategory")}</p>

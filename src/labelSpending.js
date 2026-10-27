@@ -24,3 +24,9 @@ export function labelPeriod(mode,anchor,cycleDay,start,end){
  if(mode==='year')return {start:anchor.slice(0,4)+'-01-01',end:String(Number(anchor.slice(0,4))+1)+'-01-01'};
  return periodBounds(anchor,mode,cycleDay);
 }
+
+export function projectedLabelSpending(transactions,category,bounds,venezuela,today,includeScheduled){
+ const actual=transactions.filter(tx=>tx.date&&tx.date<=today),future=transactions.filter(tx=>tx.date&&tx.date>today);
+ const result=labelSpending(includeScheduled?transactions:actual,category,bounds,venezuela);
+ return {...result,actual:labelSpending(actual,category,bounds,venezuela).total,scheduled:labelSpending(future,category,bounds,venezuela).total};
+}

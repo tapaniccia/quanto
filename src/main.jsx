@@ -1,3 +1,4 @@
+import LegalCenter from './LegalCenter.jsx';
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./storageShim.js";
@@ -7,6 +8,6 @@ import CloudGate from "./CloudGate.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <CloudGate><App /></CloudGate>
+    <LegalCenter><CloudGate><App /></CloudGate></LegalCenter>
   </React.StrictMode>
 );

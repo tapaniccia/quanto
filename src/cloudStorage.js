@@ -1,3 +1,4 @@
+import {withLegalAcceptance} from './legalConfig.js';
 import {doc,getDoc,runTransaction,onSnapshot} from 'firebase/firestore';
 const KEYS=['household-config','finance-records'];
 const emit=(name,detail)=>window.dispatchEvent(new CustomEvent(name,{detail}));
@@ -58,4 +59,8 @@ export function clearPending(uid){
  if(!window.confirm('¿Ya guardaste el archivo de cambios pendientes? Se cargará la versión de la nube.'))return;
  for(const key of KEYS)localStorage.removeItem(`quanto:cloud-draft:${uid}:${key}`);
  window.location.reload();
+}
+
+export async function recordLegalAcceptance(db,uid,record){
+ await runTransaction(db,async tx=>{const ref=cloudRef(db,uid,'household-config'),snapshot=await tx.get(ref);if(!snapshot.exists())throw Error('Missing account configuration');const original=snapshot.data(),config=JSON.parse(original.value),updated=withLegalAcceptance(config,record);if(updated!==config)tx.set(ref,{value:JSON.stringify(updated),revision:original.revision+1});});
 }

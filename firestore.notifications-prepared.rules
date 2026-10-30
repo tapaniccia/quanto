@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /public/notifications {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /users/{userId}/notifications/{deviceId} {
+      function owner() { return request.auth != null && request.auth.uid == userId; }
+      function validPrefs() {
+        return request.resource.data.subscription is string && request.resource.data.subscription.size() < 12000
+          && request.resource.data.enabled is bool
+          && request.resource.data.hour is int && request.resource.data.hour >= 0 && request.resource.data.hour < 24
+          && request.resource.data.timeZone is string && request.resource.data.timeZone.size() < 100
+          && request.resource.data.expenses is bool && request.resource.data.income is bool
+          && request.resource.data.cycleClose is bool && request.resource.data.showAmounts is bool
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow read, delete: if owner();
+      allow create: if owner() && deviceId.matches('[0-9a-f]{64}') && validPrefs()
+        && request.resource.data.keys().hasOnly(['subscription','enabled','hour','timeZone','expenses','income','cycleClose','showAmounts','updatedAt']);
+      allow update: if owner() && validPrefs()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['subscription','enabled','hour','timeZone','expenses','income','cycleClose','showAmounts','updatedAt']);
+    }
+    match /users/{userId}/receipts/{receiptId} {
+      function receiptOwner() { return request.auth != null && request.auth.uid == userId; }
+      function receiptValid() { return receiptId.matches('[a-zA-Z0-9_-]{1,80}')
+        && request.resource.data.keys().hasOnly(['dataUrl','mime','bytes','createdAt','name'])
+        && request.resource.data.dataUrl is string && request.resource.data.dataUrl.size() <= 280000
+        && request.resource.data.dataUrl.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+')
+        && request.resource.data.mime == 'image/jpeg'
+        && request.resource.data.bytes is int && request.resource.data.bytes > 0 && request.resource.data.bytes <= 200000
+        && request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 40
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120; }
+      allow read, delete: if receiptOwner();
+      allow create: if receiptOwner() && receiptValid();
+      allow update: if receiptOwner() && request.resource.data == resource.data;
+    }
+    match /users/{userId}/data/{key} {
+      allow read: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records'];
+      allow delete: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records'];
+      allow create: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records']
+        && request.resource.data.keys().hasOnly(['value','revision'])
+        && request.resource.data.value is string && request.resource.data.value.size() < 800000
+        && request.resource.data.revision == 1;
+      allow update: if request.auth != null && request.auth.uid == userId && key in ['household-config','finance-records']
+        && request.resource.data.keys().hasOnly(['value','revision'])
+        && request.resource.data.value is string && request.resource.data.value.size() < 800000
+        && request.resource.data.revision == resource.data.revision + 1;
+    }
+  }
+}

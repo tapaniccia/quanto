@@ -1,3 +1,4 @@
+import {calendarDate,calendarHash,calendarDateFromHash} from './calendarNavigation.js';
 import ReceiptField from './ReceiptField.jsx';
 import {resolveReceiptDrafts} from './receipts.js';
 import React, { useState, useEffect, useMemo, useCallback, useContext, createContext, useRef } from "react";
@@ -952,6 +953,13 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const t = (k) => STR[lang][k];
   const showToast = useToast();
   const [tab, setTab] = useState("overview");
+  const [calendarRequest,setCalendarRequest]=useState(null);
+  const openReminderDay=useCallback(date=>{const valid=calendarDate(date);if(!valid)return;setCalendarRequest({date:valid,id:Date.now()});setTab("calendar");},[]);
+  useEffect(()=>{const fromHash=()=>{const date=calendarDateFromHash(window.location.hash);if(date)openReminderDay(date);};
+    const fromWorker=event=>{if(event.data?.type==='quanto-open-calendar'){const date=calendarDate(event.data.date);if(date){window.location.hash=calendarHash(date);openReminderDay(date);}}};
+    fromHash();window.addEventListener('hashchange',fromHash);navigator.serviceWorker?.addEventListener('message',fromWorker);
+    return()=>{window.removeEventListener('hashchange',fromHash);navigator.serviceWorker?.removeEventListener('message',fromWorker);};
+  },[openReminderDay]);
   const [modalType, setModalType] = useState(null);
   const [editingTx, setEditingTx] = useState(null);
   const [initialDate,setInitialDate]=useState(undefined);
@@ -1084,7 +1092,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         <header className="quanto-account-toolbar" aria-label={lang==='es'?'Cuenta y preferencias':'Account and preferences'}>
           <div className="quanto-mobile-brand md:hidden"><Logo height={28}/></div>
           <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
-          <div className="quanto-account-actions"><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={()=>setTab("calendar")} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
+          <div className="quanto-account-actions"><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={openReminderDay} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
         </header>
         <MobileNav items={NAV} active={tab} onChange={setTab} lang={lang} C={C}/>
 
@@ -1095,7 +1103,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
-        {tab === "calendar" && <Planning theme={theme} categoryLabel={tx=>{const c=(isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]||[]).find(c=>c.id===spendingCategory(tx));return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
+        {tab === "calendar" && <Planning dayRequest={calendarRequest} theme={theme} categoryLabel={tx=>{const c=(isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]||[]).find(c=>c.id===spendingCategory(tx));return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
         {tab === "overview" && (
           <div className="space-y-6">
             <div>

@@ -1,4 +1,4 @@
-export const LEGAL_VERSION='2026-10-27';
+export const LEGAL_VERSION='2026-10-29';
 export const LEGAL_CONTACT='services@evasconsulting.com';
 export const LEGAL_OWNER="EVA's Consulting";
 export function acceptanceRecord(lang,method){return {version:LEGAL_VERSION,acceptedAt:new Date().toISOString(),language:lang==='en'?'en':'es',method,termsAccepted:true,privacyAcknowledged:true};}

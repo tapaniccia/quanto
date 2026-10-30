@@ -1,3 +1,5 @@
+import ReceiptField from './ReceiptField.jsx';
+import {resolveReceiptDrafts} from './receipts.js';
 import React, { useState, useEffect, useMemo, useCallback, useContext, createContext, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -28,7 +30,7 @@ import LabelSpending from './LabelSpending.jsx';
 import MobileNav from './MobileNav.jsx';
 import {chartCategory} from './labelSpending.js';
 import TransactionClassification from "./TransactionClassification.jsx";
-import {labelCategory,personalLabelCatalog,updateClassification} from "./classification.js";
+import {labelCategory,personalLabelCatalog,updateClassification,normalizeLabels} from "./classification.js";
 
 /* ---------------------------------------------------------------------- */
 /*  Design tokens (dark + light)                                           */
@@ -756,9 +758,10 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate, onDuplicate, isCopy, onEditSeries }) {
+function AddModal({ labelCatalog={},lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate, onDuplicate, isCopy, onEditSeries }) {
   const C = useC();
   const t = (k) => STR[lang][k];
+  const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState(''),[receiptBusy,setReceiptBusy]=useState(false);
   const [type,setType]=useState(initialType==='capital'?'ingreso':initialType==='ahorro'?'activo':initialType);
   const [capitalMode,setCapitalMode]=useState(initialType==='capital'||editing?.catId==='aporte_capital');
   const [savingsMode,setSavingsMode]=useState(initialType==='ahorro'||(editing?.type==='activo'&&editing?.tag==='ahorro'&&SAVINGS_CATS.includes(editing?.catId)));
@@ -795,27 +798,29 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
   const validOrdinary = (currency!=='BS'||Number(extra.referenceRate)>0||(!extra.rateReference&&!!editing)) && Number.isFinite(Number(amount)) && Number(amount) > 0 && (currency !== "BS" || (Number.isFinite(Number(rate)) && Number(rate) > 0)) && [extra.feeFixed, extra.feePercent].every(v => !v || (Number.isFinite(Number(v)) && Number(v) >= 0)) && (type !== "ingreso" || Number(extra.feeFixed || 0) + Number(amount) * Number(extra.feePercent || 0) / 100 <= Number(amount)) && (!extra.repeatUnit || (!!date && Number.isInteger(Number(extra.repeatEvery)) && Number(extra.repeatEvery) >= 1 && (!extra.repeatUntil || extra.repeatUntil >= date)));
 
   const validSettlement=!editing?.cashea||!settlement.paid||(settlement.date&&settlement.date<=todayISO()&&settlement.date>=editing.cashea.purchaseDate&&Number.isFinite(settlement.effectiveRate)&&settlement.effectiveRate>0);
-  const canSave=(splitCashea?!!casheaPreview:validOrdinary&&validSettlement)&&(!editing?.seriesId||!!date);
-  const save = () => {
-    if (!canSave) return;
+  const canSave=!saving&&!receiptBusy&&(splitCashea?!!casheaPreview:validOrdinary&&validSettlement)&&(!editing?.seriesId||!!date);
+  const save = async () => {
+    if (!canSave) return;setSaving(true);setSaveError('');try{
     if(splitCashea){
       const plan=casheaSchedule({...casheaPlan,total:amount,date}),planId=uid();
       const transactions=plan.payments.map(payment=>({...extra,id:uid(),type:payment.role==='initial'?'egreso':'pasivo',catId:payment.role==='initial'?catId:'cashea',expenseCategory:purchaseCategory,desc:`${desc.trim()||'Cashea'} · ${payment.role==='initial'?(lang==='es'?'Inicial':'Down payment'):`${lang==='es'?'Cuota':'Installment'} ${payment.index}/${plan.installments}`}`,date:payment.date,currency:'USD',amount:payment.amount,rate:null,rateReference:null,referenceRate:null,selectedRate:null,fixedExpense:payment.role==='installment'?true:!!extra.fixedExpense,feeFixed:0,feePercent:0,recurrence:null,repeatUnit:'',paymentMethod:'Cashea',ownerId,private:isPrivate,tag:tag||'necesidad',cashea:{planId,purchaseDate:date,purchaseTotalUSD:plan.total,downUSD:plan.down,installments:plan.installments,everyDays:plan.everyDays,role:payment.role,index:payment.index,nominalUSD:payment.amount,dueDate:payment.date,purchaseCategory,purchaseName:desc.trim()||'Cashea'},casheaSettlement:null}));
-      onSave(transactions);onClose();return;
+      await onSave(transactions);onClose();return;
     }
     const amt = Number(amount);
     const usedRate = currency === "BS" ? Number(rate) : null;
-    onSave({
+    await onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
       id: editing ? editing.id : uid(), type, catId, expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null, desc: desc.trim(), date, currency,
       amount: amt, ...(editing?.cashea?{currency:'USD',date:settlement.paid?settlement.date:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date),cashea:{...editing.cashea,purchaseCategory,nominalUSD:amt,dueDate:settlement.paid?editing.cashea.dueDate:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date)},casheaSettlement:settlement.paid?{date:settlement.date,rate:settlement.effectiveRate,rateDate:settlement.rateDate,amountBS:settlement.amountBS}:null}:{}), rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
+    }catch{setSaveError(lang==='es'?'No se pudo guardar. Comprueba tu conexión y el estado de sincronización; la factura no se ha publicado ni compartido.':'Could not save. Check your connection and synchronization status; the receipt has not been made public or shared.');}finally{setSaving(false);}
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#05090F99" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#05090F99",zIndex:100 }} onClick={saving?undefined:onClose}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="quanto-transaction-modal w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
+        <fieldset disabled={saving}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
@@ -899,6 +904,9 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
           </div>
         )}
 
+        <TransactionClassification labelsOnly draft tx={{...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null,desc}} lang={lang} categoryId={purchaseCategory} categoryName={(CATS[type]||[]).find(c=>c.id===purchaseCategory)?.[lang==='es'?'es':'en']||purchaseCategory} options={labelCatalog[labelCategory({...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null})]||[]} onChange={patch=>setExtra(previous=>({...previous,...patch}))}/>
+        <ReceiptField value={extra} onChange={setExtra} onBusy={setReceiptBusy} lang={lang}/>
+        {saveError&&<p role="alert" data-receipt-error>{saveError}</p>}
         <ExtraFields type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} installmentPlan={splitCashea}>
           {splitCashea&&<CasheaFields value={casheaPlan} onChange={setCasheaPlan} total={amount} date={date} rates={rates} lang={lang}/>}
           {editing?.cashea&&<CasheaSettlement tx={{...editing,...extra,amount:Number(amount),type}} rates={rates} value={settlement} onChange={setSettlement} lang={lang}/>}
@@ -922,8 +930,9 @@ function AddModal({ lang, type: initialType, config, members, currentUser, rates
         </div>}
         <div className="flex gap-2">
           <Btn variant="ghost" onClick={onClose} className="flex-1">{t("cancel")}</Btn>
-          <Btn onClick={save} disabled={!canSave} className="flex-1">{t("save")}</Btn>
+          <Btn onClick={save} disabled={!canSave} className="flex-1">{saving?(lang==='es'?'Guardando…':'Saving…'):t("save")}</Btn>
         </div>
+        </fieldset>
       </div>
     </div>
   );
@@ -1031,11 +1040,13 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     { id: "settings", label: t("settings"), icon: SettingsIcon },
   ];
 
-  const saveTx = (input) => {
-    const inputs=Array.isArray(input)?input:[input],payments=inputs.filter(tx=>!tx.seriesId),byId=new Map(payments.map(tx=>[tx.id,tx]));
+  const saveTx = async (input) => {
+    const storage=window.storage,raw=Array.isArray(input)?input:[input];
+    const inputs=(await resolveReceiptDrafts(raw,storage)).map(tx=>({...tx,labels:normalizeLabels(tx.labels)})),payments=inputs.filter(tx=>!tx.seriesId),byId=new Map(payments.map(tx=>[tx.id,tx]));
+    if(window.storage!==storage)throw Error('Session changed');
     const current=latestRecords.current;
     const next=[...payments.filter(tx=>!current.transactions.some(old=>old.id===tx.id)),...current.transactions.map(tx=>byId.get(tx.id)||tx)];
-    const exceptions={...current.exceptions};for(const tx of inputs.filter(tx=>tx.seriesId)){const {recurrence,repeatUnit,repeatEvery,repeatUntil,...patch}=tx;exceptions[tx.id]={...exceptions[tx.id],...patch};}const value={...current,transactions:next,exceptions};latestRecords.current=value;saveRecords(value);
+    const exceptions={...current.exceptions};for(const tx of inputs.filter(tx=>tx.seriesId)){const {recurrence,repeatUnit,repeatEvery,repeatUntil,...patch}=tx;exceptions[tx.id]={...exceptions[tx.id],...patch};}const catalogs={...(current.labelCatalog?.[currentUser.id]||{})};for(const tx of inputs){const key=labelCategory(tx);catalogs[key]=normalizeLabels([...(catalogs[key]||[]),...tx.labels]);}const value={...current,transactions:next,exceptions,labelCatalog:{...current.labelCatalog,[currentUser.id]:catalogs}};latestRecords.current=value;if(await saveRecords(value)===false)throw Error('Save failed');
     showToast(Array.isArray(input)?`${payments.length} ${lang==='es'?'pagos Cashea guardados.':'Cashea payments saved.'}`:t('txSaved'));
   };
   const saveClassification=(id,change)=>{const current=latestRecords.current,next=updateClassification(current,id,change,currentUser.id);if(next===current)return;latestRecords.current=next;saveRecords(next);showToast(t('txSaved'));};
@@ -1254,7 +1265,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                             <p className="text-sm truncate" style={{ color: C.text }}>{tx.desc || tx.customCategory || (cat ? (lang === "es" ? cat.es : cat.en) : "")}</p>
                             <div className="quanto-row-meta flex items-center gap-1.5 flex-wrap" style={{ color: C.muted }}>
                               {tx.date || (lang === "es" ? "Sin fecha" : "Unscheduled")} · {[tx.beneficiary,tx.group,tx.paymentMethod,tx.recurrence ? "↻" : ""].filter(Boolean).join(" · ")}
-                              {tx.private && <Lock size={10} />}
+                              {tx.receiptId&&<span className="inline-flex items-center gap-1"><Receipt size={12}/>{lang==="es"?"Factura adjunta":"Receipt attached"}</span>}{tx.private && <Lock size={10} />}
                               {rowTag && (
                                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ background: `${TAG_META[rowTag].color}1F`, color: TAG_META[rowTag].color }}>
                                   {t(TAG_INFO[rowTag].labelKey)}
@@ -1300,7 +1311,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       </main>
 
       {modalType && (
-        <AddModal key={editingTx?.id||modalType} onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
+        <AddModal labelCatalog={personalLabels} key={editingTx?.id||modalType} onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
           rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined);setCalendarOccurrence(null); }} onSave={saveTx}
           onEditSeries={editingTx?.seriesId?()=>openTx(records.transactions.find(tx=>tx.id===editingTx.seriesId)):undefined}
           isCopy={!!editingTx&&!editingTx.seriesId&&!records.transactions.some(tx=>tx.id===editingTx.id)} onDuplicate={editingTx&&(editingTx.seriesId||records.transactions.some(tx=>tx.id===editingTx.id))?()=>duplicateTx(calendarOccurrence||editingTx):undefined}
@@ -1515,7 +1526,7 @@ export default function App() {
 
   const saveRecords = useCallback(async (next) => {
     setRecords(next);
-    try { await window.storage.set("finance-records", JSON.stringify(next), true); } catch (e) { console.error(e); }
+    try { await window.storage.set("finance-records", JSON.stringify(next), true); return true; } catch (e) { console.error(e); return false; }
   }, []);
 
   const handleCreate = async (code, name, color, emoji) => {

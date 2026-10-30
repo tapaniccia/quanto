@@ -1,5 +1,6 @@
+import {validReceiptId,receiptPayload} from './receipts.js';
 import {withLegalAcceptance} from './legalConfig.js';
-import {doc,getDoc,runTransaction,onSnapshot} from 'firebase/firestore';
+import {doc,getDoc,runTransaction,onSnapshot,setDoc} from 'firebase/firestore';
 const KEYS=['household-config','finance-records'];
 const emit=(name,detail)=>window.dispatchEvent(new CustomEvent(name,{detail}));
 export const localData=()=>Object.fromEntries(KEYS.map(key=>[key,localStorage.getItem(`quanto:shared:${key}`)]).filter(([,value])=>value!==null));
@@ -21,6 +22,8 @@ export function installCloudStorage(db,uid,initial){
  const remote=()=>emit('quanto-cloud-data',Object.fromEntries(KEYS.map(key=>[key,cache[key]?.value||null])));
  const status=(message,error=false)=>emit('quanto-cloud-status',{message,error,pending:pending>0});
  const storage={cloud:true,uid,draftsAvailable:blocked,
+  async putReceipt(id,value){if(stopped||!validReceiptId(id))throw Error('Receipt session unavailable');await setDoc(doc(db,'users',uid,'receipts',id),receiptPayload(value));},
+  async getReceipt(id){if(stopped||!validReceiptId(id))throw Error('Receipt session unavailable');const snapshot=await getDoc(doc(db,'users',uid,'receipts',id));return snapshot.exists()?receiptPayload(snapshot.data()):null;},
   async get(key){if(!cache[key])throw new Error('No data');return {key,value:cache[key].value,shared:true};},
   async set(key,value){
    if(!KEYS.includes(key)||stopped)throw new Error('Sesión no disponible');

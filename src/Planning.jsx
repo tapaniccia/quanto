@@ -1,3 +1,4 @@
+import PaymentMethod from './PaymentMethod.jsx';
 import React,{useState} from 'react';
 import useCalendarSwipe from './useCalendarSwipe.js';
 import {shiftCalendarDay} from './calendarSwipe.js';
@@ -17,7 +18,7 @@ export function ExtraFields({value,setValue,rates,venezuela,lang,type,children,i
  const field=(key,label,type='text')=><label>{label}<input placeholder={({customCategory:text('Ej. Suscripciones','e.g. Subscriptions'),beneficiary:text('Ej. Mis perros','e.g. My dogs'),group:text('Ej. Casa o Business','e.g. Home or Business'),labels:text('Ej. mensual, compartido','e.g. monthly, shared'),feePercent:'0',feeFixed:'0',repeatEvery:'1'})[key]} type={type} min={type==='number'?0:undefined} step={type==='number'?'any':undefined} value={value[key]??''} onChange={e=>setValue({...value,[key]:e.target.value})}/></label>;
  return <div className="quanto-extra">
   {isDebtOrCashea({...value,type})?<p>{text('Deudas y Cashea se muestran en amarillo.','Debt and Cashea are shown in yellow.')}</p>:<fieldset className="quanto-color-picker"><legend>{text('Color en el calendario','Calendar color')}</legend><label className="quanto-color-toggle"><input type="checkbox" checked={!!value.calendarColor} onChange={e=>setValue({...value,calendarColor:e.target.checked?(EVENT_COLORS[type] || '#3b82f6'):''})}/>{text('Usar un color personalizado','Use a custom color')}</label>{value.calendarColor?<label>{text('Elige el color','Choose color')}<input type="color" value={eventColor({...value,type})} onChange={e=>setValue({...value,calendarColor:e.target.value})}/></label>:<p>{text('Automático: verde para ingresos, rojo para gastos, azul para activos y amarillo para deudas y Cashea.','Automatic: green income, red expenses, blue assets, yellow debt and Cashea.')}</p>}</fieldset>}
-  <label>{text('Método de pago','Payment method')}<input placeholder={text('Selecciona o escribe un método','Select or enter a method')} list="payment-methods" disabled={!!value.cashea} value={value.paymentMethod||''} onChange={e=>setValue({...value,paymentMethod:e.target.value})}/><datalist id="payment-methods">{['Tarjeta','Binance','Zelle','Efectivo','Pago Móvil','Cashea','Tarjeta internacional'].map(x=><option key={x}>{x}</option>)}</datalist></label>
+  <PaymentMethod value={value.paymentMethod||''} disabled={!!value.cashea} onChange={paymentMethod=>setValue(previous=>({...previous,paymentMethod}))} lang={lang}/>
   {['egreso','pasivo'].includes(type)&&<label className="quanto-color-toggle"><input type="checkbox" checked={value.fixedExpense??!!value.repeatUnit} onChange={e=>setValue({...value,fixedExpense:e.target.checked})}/>{text('Gasto fijo para el presupuesto','Fixed expense for the budget')}</label>}
   {children}
   {!installmentPlan&&<div className="quanto-columns">{field('feePercent' ,text('Comisión (%)','Fee (%)'),'number')}{field('feeFixed',text('Comisión fija (moneda del movimiento)','Fixed fee (transaction currency)'),'number')}</div>}
@@ -54,7 +55,7 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
   const es=lang==='es', text=(a,b)=>es?a:b;
   const today=iso(new Date());
   const [month,setMonth]=useState(today.slice(0,7));
-  const [view,setView]=useState(()=>typeof window!=='undefined'&&window.matchMedia('(max-width:640px)').matches?'list':'month');
+  const [view,setView]=useState('month');
   const [selectedDate,setSelectedDate]=useState(today);
   const [pendingType,setPendingType]=useState('egreso');
   const bounds=periodBounds(`${month}-01`);
@@ -89,6 +90,7 @@ export function Planning({records,saveRecords,config,lang,onEdit,onNew,currentUs
         <strong>{t.desc||t.customCategory||categoryLabel?.(t)||eventLabel(t.type,es,t.tag)}</strong>
         <span className="quanto-event-amount">{['egreso','pasivo'].includes(t.type)?'−':t.type==='ingreso'?'+':''}{money(transactionValue(t,config.isVenezuela))}</span>
         <span className="quanto-event-category">{categoryLabel?.(t)}</span>{normalizeLabels(t.labels).length>0&&<small className="quanto-event-personal-labels">{normalizeLabels(t.labels).join(' / ')}</small>}
+        {t.receiptId&&<small>{text('Factura adjunta','Receipt attached')}</small>}
         <CasheaAmount tx={t} rates={records.rates} lang={lang}/>{t.currency==='BS'&&t.rateReference&&t.rateReference!=='USD'&&t.referenceRate>0&&<small>{(transactionValue(t,config.isVenezuela)*Number(t.rate)/Number(t.referenceRate)).toFixed(2)} {t.rateReference} · {text('Referencia','Reference')} {t.referenceDate||t.date}</small>}
       </button>
       {!t.casheaSettlement&&<details className="quanto-event-actions"><summary>{text('Cambiar fecha','Reschedule')}</summary><label>{text('Fecha del movimiento','Transaction date')}<input type="date" value={t.date||''} onChange={e=>{if(e.target.value||!t.seriesId)reschedule(t.id,e.target.value);}}/></label></details>}

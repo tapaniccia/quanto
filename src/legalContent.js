@@ -142,6 +142,10 @@ export const legalDocuments={
      [
       "Datos técnicos: sesión, preferencias de idioma y tema, borradores locales, estado de sincronización y avisos. Los proveedores pueden recibir dirección IP y datos de conexión al entregar el sitio, autenticar o atender una solicitud.",
       "Technical data: session state, language and theme preferences, local drafts, synchronization state and reminders. Providers may receive IP addresses and connection data when serving the site, authenticating or handling a request."
+     ],
+     [
+      "Adjuntos opcionales: fotos o capturas de facturas que elijas. Se convierten a JPEG comprimido y se guardan en documentos privados de Firestore de tu cuenta, separados de los movimientos. No se hace lectura automática ni OCR. Una factura puede estar vinculada a varias cuotas; quitarla de un movimiento no borra las otras referencias ni elimina automáticamente el archivo de la cuenta. Puedes pedir su eliminación por correo. Evita información personal innecesaria en las imágenes.",
+      "Optional attachments: receipt photos or screenshots you choose. They are converted to compressed JPEG and saved in private Firestore documents in your account, separate from transactions. No automatic extraction or OCR is performed. A receipt can link to several installments; removing it from a transaction does not remove other references or automatically delete the file from the account. Request deletion by email. Avoid unnecessary personal information in images."
      ]
     ]
    },
@@ -330,6 +334,10 @@ export const legalDocuments={
      [
       "El archivo JSON incluye los movimientos y la configuración disponibles de la cuenta conectada. Si existen borradores pendientes de esa cuenta en este navegador, se incluyen aparte para recuperarlos. No incluye tu contraseña ni sustituye una solicitud de todos los datos que conserven los proveedores. Guarda el archivo en un lugar privado.",
       "The JSON file includes transactions and settings available for the signed-in account. Any pending drafts for that account in this browser are included separately for recovery. It does not include your password or replace a request for all data held by providers. Keep the file private."
+     ],
+     [
+      "La exportación también intenta incluir las facturas vinculadas a los registros y borradores de esta cuenta. Si alguna no se puede cargar, el archivo identifica el adjunto faltante; los movimientos se exportan igualmente.",
+      "Export also attempts to include receipts linked to this account’s records and drafts. If one cannot be loaded, the file identifies the missing attachment; transactions are still exported."
      ]
     ]
    },

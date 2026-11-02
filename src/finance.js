@@ -10,7 +10,21 @@ export function positionSummary(transactions,venezuela){
 export const iso = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 export const parseDate = (value) => new Date(`${value}T12:00:00`);
 export function periodBounds(date, mode='month', cycleDay=1, offset=0) {
+  const settings=typeof cycleDay==='object'?cycleDay:{cycleDay};
+  cycleDay=Math.max(1,Math.min(31,Number(settings.cycleDay)||1));
   const d=parseDate(date); let start, end;
+  if(mode==='cycle'&&settings.cycleFrequency==='weekly'){
+    const origin=/^\d{4}-\d{2}-\d{2}$/.test(settings.cycleAnchor||'')?parseDate(settings.cycleAnchor):new Date(2026,0,5,12);
+    const ordinal=x=>Date.UTC(x.getFullYear(),x.getMonth(),x.getDate())/86400000;
+    start=new Date(origin);start.setDate(origin.getDate()+(Math.floor((ordinal(d)-ordinal(origin))/7)+offset)*7);
+    end=new Date(start);end.setDate(end.getDate()+7);return {start:iso(start),end:iso(end)};
+  }
+  if(mode==='cycle'&&settings.cycleFrequency==='semimonthly'){
+    const first=Math.max(1,Math.min(27,cycleDay)),second=Math.max(first+1,Math.min(31,Number(settings.cycleSecondDay)||16));
+    const at=(index)=>{const m=Math.floor(index/2),day=((index%2)+2)%2===0?first:second;return new Date(d.getFullYear(),m,Math.min(day,new Date(d.getFullYear(),m+1,0).getDate()),12);};
+    let index=d.getMonth()*2;if(d<at(index))index--;else if(d>=at(index+1))index++;
+    start=at(index+offset);end=at(index+offset+1);return {start:iso(start),end:iso(end)};
+  }
   const anchor=(y,m)=>new Date(y,m,Math.min(cycleDay,new Date(y,m+1,0).getDate()),12);
   if(mode==='week') { start=new Date(d); start.setDate(d.getDate()-((d.getDay()+6)%7)+offset*7); end=new Date(start); end.setDate(end.getDate()+7); }
   else if(mode==='quarter') { start=new Date(d.getFullYear(),Math.floor(d.getMonth()/3)*3+offset*3,1,12); end=new Date(start.getFullYear(),start.getMonth()+3,1,12); }
@@ -98,3 +112,6 @@ export const budgetBucket = tx => {
  const category=spendingCategory(tx);
  return ['vivienda','alimentacion','salud','transporte','vehiculo','educacion','deudas','cashea'].includes(category)||isDebtPayment(tx)&&!tx.expenseCategory&&!tx.cashea?.purchaseCategory?'needs':'wants';
 };
+
+export const cycleMonthlyFactor=config=>config.cycleFrequency==='weekly'?365.2425/84:config.cycleFrequency==='semimonthly'?2:1;
+export const cycleName=(config,lang='es')=>config.cycleFrequency==='weekly'?(lang==='es'?'Semanal':'Weekly'):config.cycleFrequency==='semimonthly'?(lang==='es'?'Quincenal':'Twice monthly'):(lang==='es'?'Mensual':'Monthly');

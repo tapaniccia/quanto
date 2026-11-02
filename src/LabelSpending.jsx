@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {PieChart,Pie,Cell,ResponsiveContainer,Tooltip} from 'recharts';
 import {projectedLabelSpending,chartCategory,labelPeriod} from './labelSpending.js';
-import {isExpense,inPeriod,iso,parseDate,expandTransactions} from './finance.js';
+import {isExpense,inPeriod,iso,parseDate,periodBounds,expandTransactions} from './finance.js';
 export default function LabelSpending({transactions,exceptions={},bounds:initialBounds,cycleDay=1,venezuela,lang,categories,C,money}){
  const es=lang==='es';const [selected,setSelected]=useState('alimentacion');
  const today=iso(new Date());
@@ -11,7 +11,7 @@ export default function LabelSpending({transactions,exceptions={},bounds:initial
  const bounds=selectedBounds||{start:'9999-01-01',end:'9999-01-01'};
  const fieldStyle={background:C.card,color:C.text,borderColor:C.border,minHeight:44,width:'100%',minWidth:0};
  const periodNames=es?[['cycle','Ciclo de cobro'],['week','Semana'],['month','Mes'],['quarter','Trimestre'],['year','Año'],['custom','Rango de fechas']]:[['cycle','Pay cycle'],['week','Week'],['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Date range']];
- const move=direction=>{const d=parseDate(anchor);if(mode==='week')d.setDate(d.getDate()+direction*7);else if(mode==='year')d.setFullYear(d.getFullYear()+direction);else {const offset=mode==='quarter'?3:1;const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+direction*offset);d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));}setAnchor(iso(d));};
+ const move=direction=>{if(mode==='cycle'){setAnchor(periodBounds(anchor,'cycle',cycleDay,direction).start);return;}const d=parseDate(anchor);if(mode==='week')d.setDate(d.getDate()+direction*7);else if(mode==='year')d.setFullYear(d.getFullYear()+direction);else {const offset=mode==='quarter'?3:1;const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+direction*offset);d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));}setAnchor(iso(d));};
  const periodTransactions=useMemo(()=>valid?expandTransactions(transactions,bounds.start,bounds.end,exceptions):[],[transactions,exceptions,bounds.start,bounds.end,valid]);
  const options=useMemo(()=>{const list=categories.filter(c=>!['deudas','cashea'].includes(c.id)).map(c=>({id:c.id,name:es?c.es:c.en}));for(const tx of periodTransactions){const id=chartCategory(tx);if(isExpense(tx)&&inPeriod(tx,bounds)&&id&&!list.some(c=>c.id===id))list.push({id,name:id==='uncategorized'?(es?'Sin categoría':'Uncategorized'):id});}return list;},[categories,periodTransactions,bounds.start,bounds.end,es]);
  const category=options.some(c=>c.id===selected)?selected:options[0]?.id;

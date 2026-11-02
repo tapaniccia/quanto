@@ -1,3 +1,6 @@
+import RegionSettings from './RegionSettings.jsx';
+import {cycleName,parseDate} from './finance.js';
+import './moneySettings.css';
 import {calendarDate,calendarHash,calendarDateFromHash} from './calendarNavigation.js';
 import ReceiptField from './ReceiptField.jsx';
 import {resolveReceiptDrafts} from './receipts.js';
@@ -154,7 +157,7 @@ const STR = {
     cancel: "Cancelar",
     noTx: "Todavía no hay movimientos aquí.",
     delete: "Eliminar",
-    expensesByCategory: "Egresos por categoría (mes actual)",
+    expensesByCategory: "Egresos por categoría (ciclo actual)",
     monthlyTrend: "Ingresos vs. egresos (últimos 6 meses)",
     budgetRule: "Regla de presupuesto",
     needs: "Necesidades",
@@ -279,7 +282,7 @@ const STR = {
     cancel: "Cancel",
     noTx: "No entries here yet.",
     delete: "Delete",
-    expensesByCategory: "Expenses by category (current month)",
+    expensesByCategory: "Expenses by category (current cycle)",
     monthlyTrend: "Income vs. expenses (last 6 months)",
     budgetRule: "Budget rule",
     needs: "Needs",
@@ -379,7 +382,7 @@ const CATS = {
     { id: "educacion", icon: GraduationCap, es: "Educación", en: "Education", tipEs: "Colegiaturas, cursos, materiales.", tipEn: "Tuition, courses, materials." },
     { id: "entretenimiento", icon: Film, es: "Entretenimiento", en: "Entertainment", tipEs: "Salidas, streaming, hobbies.", tipEn: "Outings, streaming, hobbies." },
     { id: "deudas", icon: CreditCard, es: "Pago de deudas", en: "Debt payments", tipEs: "Abonos a tarjetas o préstamos.", tipEn: "Payments toward cards or loans." },
-    { id: "dogs", icon: Dog, es: "Dogs", en: "Dogs", tipEs: "Alimento, veterinario, cuidados y otros gastos de tus perros.", tipEn: "Food, vet visits, care and other expenses for your dogs." },
+    { id: "dogs", icon: Dog, es: "Mascotas", en: "Pets", tipEs: "Alimento, veterinario, cuidados y otros gastos de tus mascotas.", tipEn: "Food, vet visits, care and other expenses for your pets." },
     { id: "business", icon: Briefcase, es: "Business", en: "Business", tipEs: "Herramientas, servicios y otros gastos de tu negocio.", tipEn: "Tools, services and other business expenses." },
     { id: "otro_egreso", icon: Banknote, es: "Otro egreso", en: "Other expense", tipEs: "Cualquier otro gasto.", tipEn: "Any other spending." },
     { id: "retiro_capital", icon: Landmark, es: "Retiro de capital", en: "Capital withdrawal", tipEs: "Dinero que retiras de este registro.", tipEn: "Money withdrawn from this ledger." },
@@ -991,14 +994,15 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   }, [visibleTx, toUSD]);
 
   const monthKey = todayISO().slice(0, 7);
-  const cycle = periodBounds(todayISO(), "cycle", config.cycleDay || 1);
+  const cycle = periodBounds(todayISO(), "cycle", config);
+  const cycleLastDate=parseDate(cycle.end);cycleLastDate.setDate(cycleLastDate.getDate()-1);const cycleLast=iso(cycleLastDate);
   const monthTotals = useMemo(() => {
     const sums = { ingreso: 0, egreso: 0 };
     visibleTx.filter((tx) => inPeriod(tx, cycle)).forEach((tx) => {
       if (tx.type === "ingreso") sums.ingreso += toUSD(tx); else if(isExpense(tx)) sums.egreso += toUSD(tx);
     });
     return sums;
-  }, [visibleTx, toUSD, monthKey, config.cycleDay]);
+  }, [visibleTx, toUSD, monthKey, cycle.start, cycle.end]);
 
   const netWorth = positionSummary(visibleTx,config.isVenezuela).netWorth;
   const available = useMemo(() => availableBalance(visibleTx, config.isVenezuela, todayISO()), [visibleTx, config.isVenezuela]);
@@ -1012,7 +1016,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       const cat = [...CATS.egreso,...CATS.pasivo].find((c) => c.id === catId);
       return { name: catId === "uncategorized" ? (lang === "es" ? "Sin categoría" : "Uncategorized") : cat ? (lang === "es" ? cat.es : cat.en) : catId, value: Number(value.toFixed(2)) };
     });
-  }, [visibleTx, toUSD, monthKey, lang, config.cycleDay]);
+  }, [visibleTx, toUSD, monthKey, lang, cycle.start, cycle.end]);
 
   const PIE_COLORS = [C.violet, C.teal, C.gold, C.red, "#60A5FA", C.goldSoft, "#34D399", "#F472B6"];
 
@@ -1092,7 +1096,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         <header className="quanto-account-toolbar" aria-label={lang==='es'?'Cuenta y preferencias':'Account and preferences'}>
           <div className="quanto-mobile-brand md:hidden"><Logo height={28}/></div>
           <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
-          <div className="quanto-account-actions"><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={openReminderDay} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
+          <div className="quanto-account-actions"><button onClick={()=>setTab("settings")} aria-label={lang==='es'?'Configurar moneda y Modo Venezuela':'Configure currency and Venezuela mode'}><ArrowRightLeft size={16}/><span>{config.isVenezuela?'USD + Bs':config.currency.code}</span></button><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={openReminderDay} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
         </header>
         <MobileNav items={NAV} active={tab} onChange={setTab} lang={lang} C={C}/>
 
@@ -1111,10 +1115,12 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               <p className="text-sm mt-1" style={{ color: C.muted }}>{t("heroSub")}</p>
             </div>
 
+            <section className="quanto-setup-summary"><div><h2>{lang==='es'?'Tu configuración':'Your setup'}</h2><p>{cycleName(config,lang)} · {cycle.start} → {cycleLast}</p><button type="button" onClick={()=>setTab('settings')}>{lang==='es'?'Cambiar ciclo de cobro':'Change pay cycle'}</button></div><RegionSettings compact config={config} saveConfig={saveConfig} lang={lang}/></section>
+            {allVisible.length===0&&<section className="quanto-start-guide"><h2>{lang==='es'?'Empieza con tu primer movimiento':'Start with your first transaction'}</h2><p>{lang==='es'?'1. Elige tu moneda y ciclo. 2. Registra un ingreso. 3. Agrega tus gastos o cuotas en el calendario para ver cuánto te queda.':'1. Choose your currency and pay cycle. 2. Record income. 3. Add expenses or installments to the calendar to see what remains.'}</p><button type="button" onClick={()=>{setEditingTx(null);setModalType('ingreso');}}>{lang==='es'?'Registrar ingreso':'Record income'}</button><button type="button" onClick={()=>setTab('calendar')}>{lang==='es'?'Abrir calendario':'Open calendar'}</button></section>}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { key: "ingreso", label: t("income"), tip: t("incomeTip"), val: monthTotals.ingreso, sub: `${cycle.start} → ${cycle.end}` },
-                { key: "egreso", label: t("expenses"), tip: t("expenseTip"), val: monthTotals.egreso, sub: `${cycle.start} → ${cycle.end}` },
+                { key: "ingreso", label: t("income"), tip: t("incomeTip"), val: monthTotals.ingreso, sub: `${cycle.start} → ${cycleLast}` },
+                { key: "egreso", label: t("expenses"), tip: t("expenseTip"), val: monthTotals.egreso, sub: `${cycle.start} → ${cycleLast}` },
                 { key: "activo", label: t("assets"), tip: t("assetTip"), val: totals.activo, sub: t("total") },
                 { key: "pasivo", label: t("liabilities"), tip: t("liabilityTip"), val: totals.pasivo, sub: t("total") },
               ].map((card) => {
@@ -1163,7 +1169,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               </div>
             </Card>
 
-            <Card><LabelSpending transactions={allVisible} exceptions={records.exceptions||{}} bounds={cycle} cycleDay={config.cycleDay||1} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
+            <Card><LabelSpending transactions={allVisible} exceptions={records.exceptions||{}} bounds={cycle} cycleDay={config} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
                 <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("expensesByCategory")}</p>
@@ -1207,7 +1213,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {tab === "transactions" && (
           <div>
-            <label className="quanto-search-field block text-sm">{lang === "es" ? "Buscar movimientos" : "Search transactions"}<input placeholder={lang==='es'?'Ej. supermercado, Dogs, Business o Zelle':'e.g. groceries, Dogs, Business or Zelle'} type="search" value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
+            <label className="quanto-search-field block text-sm">{lang === "es" ? "Buscar movimientos" : "Search transactions"}<input placeholder={lang==='es'?'Ej. mercado, Mascotas, Business o Zelle':'e.g. groceries, Pets, Business or Zelle'} type="search" value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
             <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("transactions")}</h1>
               <Btn onClick={() => { setModalType("egreso"); setEditingTx(null); }}><Plus size={14} className="inline -mt-0.5 mr-1" />{t("addMovement")}</Btn>
@@ -1306,7 +1312,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "budget" && <BudgetPlanner key={config.cycleDay||1} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
+        {tab === "budget" && <BudgetPlanner key={JSON.stringify([config.cycleFrequency,config.cycleDay,config.cycleSecondDay,config.cycleAnchor])} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
         {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} categoryLabel={tx=>{const category=[...CATS.egreso,...CATS.pasivo].find(c=>c.id===spendingCategory(tx));return category?(lang==='es'?category.es:category.en):'';}} onEdit={openTx}/>}
 
         {tab === "rates" && config.isVenezuela && (
@@ -1314,7 +1320,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "settings" && (
-          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><Notifications lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
+          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><RegionSettings config={config} saveConfig={saveConfig} lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><Notifications lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
         )}
       </main>
 
@@ -1425,14 +1431,6 @@ function SettingsTab({ lang, t, config, saveConfig, setLang, currentUserId }) {
         </div>
       </Card>
 
-      <Card>
-        <p className="text-sm font-medium mb-1 flex items-center" style={{ color: C.text }}>{t("venezuelaMode")}<InfoTip text={t("venezuelaModeHelp")} /></p>
-        <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
-          <input type="checkbox" checked={config.isVenezuela} onChange={(e) => saveConfig({ ...config, isVenezuela: e.target.checked })} />
-          <span className="text-sm" style={{ color: C.muted }}>{config.isVenezuela ? "USD + Bs" : t("householdCurrency")}</span>
-        </label>
-      </Card>
-
       {!config.isVenezuela && (
         <Card>
           <p className="text-sm font-medium mb-3" style={{ color: C.text }}>{t("householdCurrency")}</p>
@@ -1529,7 +1527,7 @@ export default function App() {
 
   const saveConfig = useCallback(async (next) => {
     setConfig(next);
-    try { await window.storage.set("household-config", JSON.stringify(next), true); } catch (e) { console.error(e); }
+    try { await window.storage.set("household-config", JSON.stringify(next), true); return true; } catch (e) { console.error(e); return false; }
   }, []);
 
   const saveRecords = useCallback(async (next) => {

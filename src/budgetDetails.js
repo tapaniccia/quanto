@@ -1,0 +1,2 @@
+export function budgetDetailTotals(rows=[]){return Object.fromEntries(['needs','wants','savings'].map(bucket=>[bucket,rows.filter(row=>row.bucket===bucket).reduce((sum,row)=>sum+(Number.isFinite(Number(row.amount))?Number(row.amount):0),0)]));}
+export function validBudgetDetails(rows=[]){return rows.every(row=>['needs','wants','savings'].includes(row.bucket)&&typeof row.concept==='string'&&row.concept.trim().length>0&&row.concept.length<=120&&row.amount!==''&&Number.isFinite(Number(row.amount))&&Number(row.amount)>=0);}

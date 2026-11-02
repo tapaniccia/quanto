@@ -1,3 +1,10 @@
+import './compactUi.css';
+import Help from './Help.jsx';
+import PaymentSettings from './PaymentSettings.jsx';
+import {enabledMethods} from './paymentMethods.js';
+import {matchesLedger,compareLedger} from './ledgerFilters.js';
+import PaymentMethod from './PaymentMethod.jsx';
+import './guidedForms.css';
 import RegionSettings from './RegionSettings.jsx';
 import {cycleName,parseDate} from './finance.js';
 import './moneySettings.css';
@@ -803,6 +810,11 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
 
   const validSettlement=!editing?.cashea||!settlement.paid||(settlement.date&&settlement.date<=todayISO()&&settlement.date>=editing.cashea.purchaseDate&&Number.isFinite(settlement.effectiveRate)&&settlement.effectiveRate>0);
   const canSave=!saving&&!receiptBusy&&(splitCashea?!!casheaPreview:validOrdinary&&validSettlement)&&(!editing?.seriesId||!!date);
+  const [step,setStep]=useState(editing?3:0);const stepHeading=useRef(null),modalBody=useRef(null);
+  useEffect(()=>{modalBody.current?.scrollTo({top:0});stepHeading.current?.focus();},[step]);
+  const steps=lang==='es'?['Concepto','Monto y fecha','Opcionales','Revisar']:['Details','Amount and date','Optional','Review'];
+  const reviewCategory=[...CATS.egreso,...(CATS[type]||[])].find(c=>c.id===purchaseCategory)?.[lang==='es'?'es':'en']||purchaseCategory;
+  const validPayment=splitCashea?!!casheaPreview:Number.isFinite(Number(amount))&&Number(amount)>0&&(currency!=='BS'||Number(rate)>0&&(Number(extra.referenceRate)>0||!extra.rateReference&&!!editing))&&validSettlement;
   const save = async () => {
     if (!canSave) return;setSaving(true);setSaveError('');try{
     if(splitCashea){
@@ -823,18 +835,20 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#05090F99",zIndex:100 }} onClick={saving?undefined:onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="quanto-transaction-modal w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" ref={modalBody} aria-labelledby="tx-dialog-title" className="quanto-transaction-modal w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
         <fieldset disabled={saving}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <meta.icon size={17} style={{ color: meta.color }} />
-            <h3 className="font-medium" style={{ color: C.text }}>{isCopy ? (lang==='es'?'Nueva copia':'New copy') : editing ? t("editEntry") : t("addMovement")} · {savingsMode?t("savings"):t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
+            <h3 id="tx-dialog-title" className="font-medium" style={{ color: C.text }}>{isCopy ? (lang==='es'?'Nueva copia':'New copy') : editing ? t("editEntry") : t("addMovement")} · {savingsMode?t("savings"):t(type === "ingreso" ? "income" : type === "egreso" ? "expenses" : type === "activo" ? "assets" : "liabilities")}</h3>
           </div>
           <button onClick={onClose} aria-label={t("closeDialog")} className="p-1.5 -m-1.5 rounded-lg hover:bg-black/5"><X size={18} style={{ color: C.muted }} /></button>
         </div>
 
+        <div className="quanto-tx-progress"><p className="quanto-step-count">{lang==='es'?'Paso':'Step'} {step+1} {lang==='es'?'de':'of'} 4 · {steps[step]}</p><progress max="4" value={step+1} aria-label={lang==='es'?'Progreso del movimiento':'Transaction progress'}/><h4 ref={stepHeading} tabIndex={-1}>{steps[step]}</h4></div>
+        <section hidden={step!==0} aria-label={steps[0]}>
         <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" disabled={!!editing?.cashea} className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
-        <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p>
+        <details className="quanto-tx-advanced"><summary>{lang==='es'?'Cómo afecta a mi saldo':'How it affects my balance'}</summary>        <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p></details>
         {type!=='pasivo'&&<><label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
           {cats.map((c) => (
@@ -848,11 +862,12 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
         </div>
 
         </>}
-        {(type==='pasivo'||type==='egreso'&&['deudas','cashea'].includes(catId))&&<div className="quanto-expense-purpose"><label htmlFor="tx-expense-purpose">{lang==='es'?'Categoría del gasto':'Expense category'}</label><select id="tx-expense-purpose" value={CATS.egreso.some(c=>c.id===purposeCategory)?purposeCategory:'otro_egreso'} onChange={e=>setPurposeCategory(e.target.value)}>{CATS.egreso.filter(c=>!['deudas','retiro_capital'].includes(c.id)).map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select><p>{lang==='es'?'La categoría indica en qué gastaste. Cashea es el método de pago y Deuda / cuota indica que es un egreso financiado. Se registra una sola vez.':'The category describes what you bought. Cashea is the payment method and Debt / installment identifies a financed outflow. It is recorded only once.'}</p></div>}
+        {(type==='pasivo'||type==='egreso'&&['deudas','cashea'].includes(catId))&&<div className="quanto-expense-purpose"><label htmlFor="tx-expense-purpose">{lang==='es'?'Categoría del gasto':'Expense category'}</label><select id="tx-expense-purpose" value={CATS.egreso.some(c=>c.id===purposeCategory)?purposeCategory:'otro_egreso'} onChange={e=>setPurposeCategory(e.target.value)}>{CATS.egreso.filter(c=>!['deudas','retiro_capital'].includes(c.id)).map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select><Help>{lang==='es'?'La categoría indica en qué gastaste. Cashea es el método de pago y Deuda / cuota indica que es un egreso financiado. Se registra una sola vez.':'The category describes what you bought. Cashea is the payment method and Debt / installment identifies a financed outflow. It is recorded only once.'}</Help></div>}
         <label htmlFor="tx-desc" className="text-xs" style={{ color: C.muted }}>{t("description")} ({lang === "es" ? "opcional" : "optional"})</label>
         <input id="tx-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={lang==="es"?"Ej. Compra semanal (opcional)":"e.g. Weekly groceries (optional)"}
           className="w-full mt-1.5 mb-3 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: C.bgSoft, color: C.text, border: `1px solid ${C.border}` }} />
 
+        </section><section hidden={step!==1} aria-label={steps[1]}>
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
             <label htmlFor="tx-date" className="text-xs" style={{ color: C.muted }}>{t("date")}</label>
@@ -888,6 +903,11 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
         </div>
         {config.isVenezuela&&currency==='BS'&&<><TransactionRate date={date} rates={rates} editing={editing} onChange={handleRateSelection} onHistory={onImportRates} lang={lang}/>{Number(rate)>0&&Number(amount)>0&&<p className="text-sm my-3" style={{color:C.text}}>{lang==='es'?'Equivalente antes de comisiones:':'Equivalent before fees:'} <strong>{(Number(amount)/Number(rate)).toFixed(2)} USD</strong>{extra.rateReference&&extra.rateReference!=='USD'&&Number(extra.referenceRate)>0&&<> · {(Number(amount)/Number(extra.referenceRate)).toFixed(2)} {extra.rateReference}</>}</p>}</>}
 
+        <PaymentMethod available={enabledMethods(config)} value={extra.paymentMethod||''} disabled={!!extra.cashea} onChange={paymentMethod=>setExtra(previous=>({...previous,paymentMethod}))} lang={lang}/>
+        {splitCashea&&<CasheaFields value={casheaPlan} onChange={setCasheaPlan} total={amount} date={date} rates={rates} lang={lang}/>}
+        {editing?.cashea&&<CasheaSettlement tx={{...editing,...extra,amount:Number(amount),type}} rates={rates} value={settlement} onChange={setSettlement} lang={lang}/>}
+        {!validPayment&&<Help>{lang==='es'?'Indica un monto mayor que cero. Si usas bolívares, selecciona una tasa válida. Para Cashea, completa la inicial y las cuotas.':'Enter an amount above zero. For bolívares, select a valid rate. For Cashea, complete the down payment and installments.'}</Help>}
+        </section><section hidden={step!==2} aria-label={steps[2]}><p className="quanto-step-help">{lang==='es'?'Agrega solo lo que necesites. Puedes continuar sin completar estos detalles.':'Add only what you need. You can continue without these details.'}</p>
         {showTags && !savingsMode && (
           <div className="mb-4">
             <label className="text-xs flex items-center" style={{ color: C.muted }}>{t("tagLabel")}<InfoTip text={`${t("needsHelp")} / ${t("wantsHelp")} / ${t("savingsHelp")}`} /></label>
@@ -908,34 +928,36 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
           </div>
         )}
 
-        <TransactionClassification labelsOnly draft tx={{...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null,desc}} lang={lang} categoryId={purchaseCategory} categoryName={(CATS[type]||[]).find(c=>c.id===purchaseCategory)?.[lang==='es'?'es':'en']||purchaseCategory} options={labelCatalog[labelCategory({...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null})]||[]} onChange={patch=>setExtra(previous=>({...previous,...patch}))}/>
-        <ReceiptField value={extra} onChange={setExtra} onBusy={setReceiptBusy} lang={lang}/>
-        {saveError&&<p role="alert" data-receipt-error>{saveError}</p>}
-        <ExtraFields type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} installmentPlan={splitCashea}>
-          {splitCashea&&<CasheaFields value={casheaPlan} onChange={setCasheaPlan} total={amount} date={date} rates={rates} lang={lang}/>}
-          {editing?.cashea&&<CasheaSettlement tx={{...editing,...extra,amount:Number(amount),type}} rates={rates} value={settlement} onChange={setSettlement} lang={lang}/>}
-        </ExtraFields>
-        <p className="text-sm mb-3" style={{color:C.text}}>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</p>
-        <p className="text-xs mb-3" style={{color:C.muted}}>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</p>
+        <details className="quanto-tx-advanced"><summary>{lang==='es'?'Etiquetas personales':'Personal labels'}</summary><TransactionClassification labelsOnly draft tx={{...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null,desc}} lang={lang} categoryId={purchaseCategory} categoryName={(CATS[type]||[]).find(c=>c.id===purchaseCategory)?.[lang==='es'?'es':'en']||purchaseCategory} options={labelCatalog[labelCategory({...extra,type,catId,expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null})]||[]} onChange={patch=>setExtra(previous=>({...previous,...patch}))}/>
+        </details><details className="quanto-tx-advanced"><summary>{lang==='es'?'Factura o comprobante':'Receipt or invoice'}</summary><ReceiptField value={extra} onChange={setExtra} onBusy={setReceiptBusy} lang={lang}/>
+        </details>
+        <details className="quanto-tx-advanced"><summary>{lang==='es'?'Repetición, comisiones y color':'Repeat, fees and color'}</summary><ExtraFields availableMethods={enabledMethods(config)} hidePayment type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} installmentPlan={splitCashea}/></details>
+        <Help>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</Help>
+        <Help>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</Help>
         <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
           <input type="checkbox" disabled={!!editing?.seriesId} checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
           <span className="text-sm flex items-center" style={{ color: C.text }}><Lock size={12} className="mr-1" style={{ color: C.muted }} />{t("private")}</span>
           <InfoTip text={t("privateHelp")} />
         </label>
 
+        {isDebtOrCashea({...extra,type,catId})&&!editing?.cashea&&<label className="flex gap-2 mb-4"><input type="checkbox" checked={!!extra.debtPaid} onChange={e=>setExtra({...extra,debtPaid:e.target.checked})}/>{lang==='es'?'Ya pagué esta deuda / cuota':'I have paid this debt / installment'}</label>}
+        </section><section hidden={step!==3} aria-label={steps[3]}>
+        <dl className="quanto-review"><dt>{lang==='es'?'Movimiento':'Transaction'}</dt><dd>{desc||reviewCategory}{desc&&` · ${reviewCategory}`}</dd><dt>{lang==='es'?'Monto':'Amount'}</dt><dd>{Number(amount||0).toFixed(2)} {currency}{splitCashea&&` · ${lang==='es'?'Compra Cashea':'Cashea purchase'}`}</dd>{!splitCashea&&<><dt>{lang==='es'?'Total con comisiones':'Total with fees'}</dt><dd>{transactionValue({type,amount:Number(amount||0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)},false).toFixed(2)} {currency}</dd></>}<dt>{lang==='es'?'Fecha':'Date'}</dt><dd>{(editing?.cashea&&settlement.paid?settlement.date:date)||(lang==='es'?'Pendiente de fecha':'Unscheduled')}</dd><dt>{lang==='es'?'Método de pago':'Payment method'}</dt><dd>{extra.paymentMethod||(lang==='es'?'Sin especificar':'Not specified')}</dd><dt>{lang==='es'?'Etiquetas':'Labels'}</dt><dd>{normalizeLabels(extra.labels).join(' / ')||(lang==='es'?'Sin etiquetas':'No labels')}</dd><dt>{lang==='es'?'Factura':'Receipt'}</dt><dd>{extra.receiptId||extra.receiptDraft?(lang==='es'?'Adjunta':'Attached'):(lang==='es'?'Sin adjunto':'No attachment')}</dd></dl>
+        {splitCashea&&casheaPreview&&<p>{lang==='es'?'Se crearán':'Will create'} {casheaPreview.payments.length} {lang==='es'?'movimientos: la inicial (si corresponde) y las cuotas.':'transactions: down payment (if any) and installments.'}</p>}
+        <button type="button" className="quanto-review-edit" onClick={()=>setStep(0)}>{lang==='es'?'Editar datos':'Edit details'}</button>
         {isCopy&&<p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Copia independiente. Ajusta la fecha y guarda para agregarla; no repite la serie ni el plan Cashea.':'Independent copy. Adjust the date and save to add it; it does not repeat the series or Cashea plan.'}</p>}
         {editing?.seriesId&&<p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Los cambios se aplican solo a esta fecha. Para cambiar responsable o privacidad, usa Editar toda la serie.':'Changes apply only to this occurrence. Use Edit entire series to change owner or privacy.'}</p>}
-        {isDebtOrCashea({...extra,type,catId})&&!editing?.cashea&&<label className="flex gap-2 mb-4"><input type="checkbox" checked={!!extra.debtPaid} onChange={e=>setExtra({...extra,debtPaid:e.target.checked})}/>{lang==='es'?'Ya pagué esta deuda / cuota':'I have paid this debt / installment'}</label>}
+
         {onEditSeries&&<button type="button" onClick={onEditSeries} className="w-full rounded-lg px-3 py-3 mb-4" style={{color:C.text,border:`1px solid ${C.border}`}}>{lang==='es'?'Editar toda la serie':'Edit entire series'}</button>}
         {onDuplicate&&<button type="button" onClick={onDuplicate} className="w-full rounded-lg px-3 py-3 mb-4" style={{color:C.text,border:`1px solid ${C.border}`,minHeight:48}}>{lang==='es'?'Duplicar transacción':'Duplicate transaction'}</button>}
         {onDelete&&<div className="mb-4 space-y-2" style={{borderTop:`1px solid ${C.border}`,paddingTop:16}}>
           {onDeleteOccurrence&&<button type="button" onClick={onDeleteOccurrence} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{lang==='es'?`Eliminar solo el ${occurrenceDate}`:`Delete only ${occurrenceDate}`}</button>}
           <button type="button" onClick={onDelete} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-3" style={{color:C.red,border:`1px solid ${C.red}66`,minHeight:48}}><Trash2 size={16}/>{(editing?.recurrence||editing?.seriesId)?(lang==='es'?'Eliminar toda la serie':'Delete entire series'):(lang==='es'?'Eliminar transacción':'Delete transaction')}</button>
         </div>}
-        <div className="flex gap-2">
-          <Btn variant="ghost" onClick={onClose} className="flex-1">{t("cancel")}</Btn>
-          <Btn onClick={save} disabled={!canSave} className="flex-1">{saving?(lang==='es'?'Guardando…':'Saving…'):t("save")}</Btn>
-        </div>
+        </section>
+        {saveError&&<p role="alert" data-receipt-error>{saveError}</p>}
+        {step===2&&!canSave&&!receiptBusy&&<p role="alert">{lang==='es'?'Revisa las comisiones y la repetición antes de continuar. Los pagos recurrentes necesitan fecha y una frecuencia válida.':'Check fees and recurrence before continuing. Recurring payments need a date and valid frequency.'}</p>}
+        <div className="quanto-guided-footer"><Btn variant="ghost" onClick={step===0?onClose:()=>setStep(step-1)}>{step===0?t('cancel'):(lang==='es'?'Atrás':'Back')}</Btn>{step<3?<Btn onClick={()=>setStep(step+1)} disabled={receiptBusy||(step===1&&!validPayment)||(step===2&&!canSave)}>{lang==='es'?'Continuar':'Continue'}</Btn>:<Btn onClick={save} disabled={!canSave}>{saving?(lang==='es'?'Guardando…':'Saving…'):t('save')}</Btn>}</div>
         </fieldset>
       </div>
     </div>
@@ -968,8 +990,9 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const [initialDate,setInitialDate]=useState(undefined);
   const [search, setSearch] = useState("");
   const allVisible = useMemo(() => records.transactions.filter(tx => !tx.private || tx.ownerId === currentUser.id), [records.transactions, currentUser.id]);
+  const [ledgerFilters,setLedgerFilters]=useState({min:'',max:'',from:'',through:'',label:'',category:'',method:''}),[ledgerSort,setLedgerSort]=useState('date'),[ledgerDirection,setLedgerDirection]=useState('desc');
   const [listMonth,setListMonth]=useState(todayISO().slice(0,7));
-  const listVisible=useMemo(()=>{const b=periodBounds(`${listMonth}-01`);return [...expandTransactions(allVisible,b.start,b.end,records.exceptions||{}),...allVisible.filter(tx=>!tx.date)];},[allVisible,records.exceptions,listMonth]);
+  const listVisible=useMemo(()=>{const b=periodBounds(`${listMonth}-01`),last=ledgerFilters.through?new Date(`${ledgerFilters.through}T12:00:00`):null;if(last)last.setDate(last.getDate()+1);return [...expandTransactions(allVisible,ledgerFilters.from||b.start,last?iso(last):b.end,records.exceptions||{}),...allVisible.filter(tx=>!tx.date)].filter(tx=>matchesLedger(tx,ledgerFilters,value=>transactionValue(value,config.isVenezuela)));},[allVisible,records.exceptions,listMonth,ledgerFilters,config.isVenezuela]);
   const personalLabels=useMemo(()=>personalLabelCatalog(records,currentUser.id),[records.transactions,records.exceptions,records.labelCatalog,currentUser.id]);
   const [txFilter, setTxFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
@@ -1115,8 +1138,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               <p className="text-sm mt-1" style={{ color: C.muted }}>{t("heroSub")}</p>
             </div>
 
-            <section className="quanto-setup-summary"><div><h2>{lang==='es'?'Tu configuración':'Your setup'}</h2><p>{cycleName(config,lang)} · {cycle.start} → {cycleLast}</p><button type="button" onClick={()=>setTab('settings')}>{lang==='es'?'Cambiar ciclo de cobro':'Change pay cycle'}</button></div><RegionSettings compact config={config} saveConfig={saveConfig} lang={lang}/></section>
-            {allVisible.length===0&&<section className="quanto-start-guide"><h2>{lang==='es'?'Empieza con tu primer movimiento':'Start with your first transaction'}</h2><p>{lang==='es'?'1. Elige tu moneda y ciclo. 2. Registra un ingreso. 3. Agrega tus gastos o cuotas en el calendario para ver cuánto te queda.':'1. Choose your currency and pay cycle. 2. Record income. 3. Add expenses or installments to the calendar to see what remains.'}</p><button type="button" onClick={()=>{setEditingTx(null);setModalType('ingreso');}}>{lang==='es'?'Registrar ingreso':'Record income'}</button><button type="button" onClick={()=>setTab('calendar')}>{lang==='es'?'Abrir calendario':'Open calendar'}</button></section>}
+            {allVisible.length===0&&<section className="quanto-start-guide"><h2>{lang==='es'?'Empieza con tu primer movimiento':'Start with your first transaction'}</h2><Help>{lang==='es'?'Registra un ingreso y agrega tus gastos o cuotas al calendario para ver cuánto te queda. Puedes ajustar tu moneda y ciclo en Ajustes.':'Record income and add expenses or installments to the calendar to see what remains. You can change currency and pay cycle in Settings.'}</Help><button type="button" onClick={()=>{setEditingTx(null);setModalType('ingreso');}}>{lang==='es'?'Registrar ingreso':'Record income'}</button><button type="button" onClick={()=>setTab('calendar')}>{lang==='es'?'Abrir calendario':'Open calendar'}</button></section>}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { key: "ingreso", label: t("income"), tip: t("incomeTip"), val: monthTotals.ingreso, sub: `${cycle.start} → ${cycleLast}` },
@@ -1156,7 +1178,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                 <p>{lang === "es" ? "Ingresos acumulados" : "Accumulated income"}: <strong style={{color:C.teal}}>{money(available.income)}</strong></p>
                 <p>{lang === "es" ? "Gastos acumulados" : "Accumulated expenses"}: <strong style={{color:C.red}}>{money(available.expenses)}</strong></p>
               </div>
-              <p className="text-xs mt-3 leading-relaxed" style={{color:C.muted}}>{lang === "es" ? "Entradas menos egresos (incluidas deudas/cuotas y comisiones) y ahorro apartado hasta hoy. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Inflows minus outflows (including debt/installments and fees) and savings set aside through today. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</p>
+              <Help>{lang === "es" ? "Entradas menos egresos (incluidas deudas/cuotas y comisiones) y ahorro apartado hasta hoy. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Inflows minus outflows (including debt/installments and fees) and savings set aside through today. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</Help>
             </Card>
 
             <Card>
@@ -1250,8 +1272,9 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               ))}
             </div>
 
+            <details className="quanto-ledger-filters"><summary>{lang==='es'?'Filtrar y ordenar movimientos':'Filter and sort transactions'}</summary><div className="quanto-filter-grid">{[['from','Desde','From','date'],['through','Hasta','Through','date'],['min','Monto mínimo','Minimum amount','number'],['max','Monto máximo','Maximum amount','number'],['label','Etiqueta personal','Personal label','text']].map(([key,es,en,type])=><label key={key}>{lang==='es'?es:en}{['min','max'].includes(key)&&` (${config.isVenezuela?'USD':config.currency.code})`}<input type={type} min={type==='number'?0:undefined} step={type==='number'?'0.01':undefined} value={ledgerFilters[key]} onChange={e=>setLedgerFilters({...ledgerFilters,[key]:e.target.value})}/></label>)}<label>{lang==='es'?'Categoría':'Category'}<select value={ledgerFilters.category} onChange={e=>setLedgerFilters({...ledgerFilters,category:e.target.value})}><option value="">{lang==='es'?'Todas':'All'}</option>{[...new Map(Object.values(CATS).flat().map(c=>[c.id,c])).values()].map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select></label><label>{lang==='es'?'Método de pago':'Payment method'}<select value={ledgerFilters.method} onChange={e=>setLedgerFilters({...ledgerFilters,method:e.target.value})}><option value="">{lang==='es'?'Todos':'All'}</option>{[...new Set([...enabledMethods(config),...allVisible.map(tx=>tx.paymentMethod).filter(Boolean)])].map(method=><option key={method}>{method}</option>)}</select></label><label>{lang==='es'?'Ordenar por':'Sort by'}<select value={ledgerSort} onChange={e=>setLedgerSort(e.target.value)}><option value="date">{lang==='es'?'Fecha':'Date'}</option><option value="amount">{lang==='es'?'Monto':'Amount'}</option><option value="labels">{lang==='es'?'Etiquetas':'Labels'}</option></select></label><label>{lang==='es'?'Orden':'Order'}<select value={ledgerDirection} onChange={e=>setLedgerDirection(e.target.value)}><option value="desc">{lang==='es'?'Descendente':'Descending'}</option><option value="asc">{lang==='es'?'Ascendente':'Ascending'}</option></select></label></div><button type="button" onClick={()=>{setLedgerFilters({min:'',max:'',from:'',through:'',label:'',category:'',method:''});setSearch('');setTxFilter('all');setTagFilter('all');setLedgerSort('date');setLedgerDirection('desc');}}>{lang==='es'?'Limpiar filtros':'Clear filters'}</button>{ledgerFilters.from&&ledgerFilters.through&&ledgerFilters.from>ledgerFilters.through&&<p role="alert">{lang==='es'?'La fecha inicial debe ser anterior a la final.':'Start date must be before end date.'}</p>}</details>
             <label className="flex gap-3 items-center mb-4">{lang==='es'?'Mes de los movimientos':'Transaction month'}<input type="month" value={listMonth} onChange={e=>{if(e.target.value)setListMonth(e.target.value);}} style={{background:C.card,color:C.text,border:`1px solid ${C.border}`,padding:10,borderRadius:8}}/></label>
-            <p className="text-xs mb-4" style={{color:C.muted}}>{lang==='es'?'Mismos movimientos y fechas que el calendario, incluidas las recurrencias. Los pendientes sin fecha también aparecen aquí.':'Same transactions and dates as the calendar, including recurring occurrences. Undated transactions appear here too.'}</p>
+            <Help>{lang==='es'?'Mismos movimientos y fechas que el calendario, incluidas las recurrencias. Los pendientes sin fecha también aparecen aquí.':'Same transactions and dates as the calendar, including recurring occurrences. Undated transactions appear here too.'}</Help>
             <Card style={{ padding: 0 }}>
               {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,spendingCategory(tx),[...CATS.ingreso,...CATS.egreso,...CATS.activo,...CATS.pasivo].find(c=>c.id===spendingCategory(tx))?.[lang==='es'?'es':'en']].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
                 <div className="py-12 text-center">
@@ -1262,7 +1285,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               ) : (
                 <div className="divide-y" style={{ borderColor: C.border }}>
                   {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,spendingCategory(tx),[...CATS.ingreso,...CATS.egreso,...CATS.activo,...CATS.pasivo].find(c=>c.id===spendingCategory(tx))?.[lang==='es'?'es':'en']].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter))
-                    .sort((a, b) => (a.date < b.date ? 1 : -1))
+                    .sort(compareLedger(ledgerSort,ledgerDirection,toUSD))
                     .map((tx) => {
                       const cat = (isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]).find((c) => c.id === spendingCategory(tx));
                       const yellow=isDebtOrCashea(tx);
@@ -1320,7 +1343,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "settings" && (
-          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><RegionSettings config={config} saveConfig={saveConfig} lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><Notifications lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
+          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><RegionSettings config={config} saveConfig={saveConfig} lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><PaymentSettings config={config} saveConfig={saveConfig} lang={lang}/><Notifications lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
         )}
       </main>
 

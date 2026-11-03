@@ -1,6 +1,6 @@
 import {categoryBudgetBucket} from './budgetBranches.js';
 import {fixedCostSummary} from './fixedCosts.js';
-import {isExpense,expandTransactions,periodBounds,transactionValue,inPeriod,iso,parseDate,budgetBucket,cycleMonthlyFactor} from './finance.js';
+import {spendingCategory,isExpense,expandTransactions,periodBounds,transactionValue,inPeriod,iso,parseDate,budgetBucket,cycleMonthlyFactor} from './finance.js';
 export function budgetSummary(records,config,today,budget={},mode='cycle'){
  const period=typeof mode==='object'?mode:periodBounds(today,mode,config),all=expandTransactions(records.transactions,period.start,period.end,records.exceptions||{}),posted=all.filter(t=>t.date<=today);const sum=list=>list.reduce((n,t)=>n+transactionValue(t,config.isVenezuela),0);
  const recordedIncome=sum(posted.filter(t=>t.type==='ingreso')),actualExpenses=sum(posted.filter(t=>isExpense(t))),fixed=fixedCostSummary(all.filter(isExpense),budget,config.isVenezuela).total;
@@ -11,7 +11,8 @@ export function budgetSummary(records,config,today,budget={},mode='cycle'){
  const base=auto(budget.emergencyBase,Math.max(fixedExpected,needsSpent)*cycleMonthlyFactor(config)),emergencyTarget=auto(budget.emergencyTarget,base*Number(budget.emergencyMonths??3));
  const nextDay=parseDate(today);nextDay.setDate(nextDay.getDate()+1);const allPosted=expandTransactions(records.transactions,'1970-01-01',iso(nextDay),records.exceptions||{}).filter(t=>t.date<=today),emergencyCurrent=sum(allPosted.filter(t=>t.type==='activo'&&t.catId==='fondo_emergencia')),invested=sum(allPosted.filter(t=>t.type==='activo'&&t.catId==='inversion'));
  const remaining=Math.max(0,emergencyTarget-emergencyCurrent),investment=auto(budget.investmentContribution,emergencyTarget>0&&remaining===0?savings:0),emergencyContribution=auto(budget.emergencyContribution,Math.min(Math.max(0,savings-investment),remaining));
- return {scheduled,period,recordedIncome,actualExpenses,fixed,fixedExpected,needsSpent,wantsSpent,savingsRecorded,income,needs,wants,savings,unallocated:income-needs-wants-savings,base,emergencyTarget,emergencyCurrent,remaining,emergencyContribution,investment,otherSavings:savings-emergencyContribution-investment,invested,expenseItems:all.filter(isExpense),fixedItems:fixedCostSummary(all.filter(isExpense),budget,config.isVenezuela).rows.filter(row=>row.included).map(row=>row.tx)};
+ const categoryUsage={};for(const tx of all){if(!categoryBudgetBucket(tx,budget))continue;const id=spendingCategory(tx),row=categoryUsage[id]||(categoryUsage[id]={posted:0,scheduled:0});row[tx.date<=today?'posted':'scheduled']+=transactionValue(tx,config.isVenezuela);}
+ return {categoryUsage,scheduled,period,recordedIncome,actualExpenses,fixed,fixedExpected,needsSpent,wantsSpent,savingsRecorded,income,needs,wants,savings,unallocated:income-needs-wants-savings,base,emergencyTarget,emergencyCurrent,remaining,emergencyContribution,investment,otherSavings:savings-emergencyContribution-investment,invested,expenseItems:all.filter(isExpense),fixedItems:fixedCostSummary(all.filter(isExpense),budget,config.isVenezuela).rows.filter(row=>row.included).map(row=>row.tx)};
 }
 
 export function saveBudgetSnapshot(config,budget,month,userId,timestamp=new Date().toISOString(),totals=null){

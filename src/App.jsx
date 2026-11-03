@@ -639,7 +639,7 @@ function ToastStack({ toasts }) {
 function ConfirmDialog({ message, confirmLabel, cancelLabel, onConfirm, onCancel }) {
   const C = useC();
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "#05090F99" }} onClick={onCancel}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "#05090F99",zIndex:160 }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label={message}
         className="w-full max-w-sm rounded-2xl p-5" style={{ background: C.bg === DARK.bg ? "#15170F" : "#FFFFFF", border: `1px solid ${C.border}`, ...body }}>
         <p className="text-sm mb-5" style={{ color: C.text }}>{message}</p>
@@ -770,7 +770,7 @@ function Gate({ lang, setLang, householdExists, loading, onCreate, onJoin, error
 /* ---------------------------------------------------------------------- */
 /*  Add transaction modal                                                   */
 /* ---------------------------------------------------------------------- */
-function AddModal({ labelCatalog={},lang, type: initialType, config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate, onDuplicate, isCopy, onEditSeries }) {
+function AddModal({ labelCatalog={},lang, type: initialType, goals=[], config, members, currentUser, rates, editing, initialDate, onClose, onSave, onImportRates, onDelete, onDeleteOccurrence, occurrenceDate, onDuplicate, isCopy, onEditSeries }) {
   const C = useC();
   const t = (k) => STR[lang][k];
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState(''),[receiptBusy,setReceiptBusy]=useState(false);
@@ -827,7 +827,7 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
     const usedRate = currency === "BS" ? Number(rate) : null;
     await onSave({
       ...extra, recurrence: extra.repeatUnit ? {unit: extra.repeatUnit, every: Number(extra.repeatEvery), until: extra.repeatUntil || null} : null,
-      id: editing ? editing.id : uid(), type, catId, expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null, desc: desc.trim(), date, currency,
+      id: editing ? editing.id : uid(),goalId:type==='activo'&&(savingsMode||tag==='ahorro'||SAVINGS_CATS.includes(catId))?(extra.goalId??goals[0]?.id??''):null, type, catId, expenseCategory:['egreso','pasivo'].includes(type)?purchaseCategory:null, desc: desc.trim(), date, currency,
       amount: amt, ...(editing?.cashea?{currency:'USD',date:settlement.paid?settlement.date:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date),cashea:{...editing.cashea,purchaseCategory,nominalUSD:amt,dueDate:settlement.paid?editing.cashea.dueDate:(editing.casheaSettlement&&date===editing.date?editing.cashea.dueDate:date)},casheaSettlement:settlement.paid?{date:settlement.date,rate:settlement.effectiveRate,rateDate:settlement.rateDate,amountBS:settlement.amountBS}:null}:{}), rate: usedRate, rateReference:currency==='BS'?(extra.rateReference||'USD'):null, referenceRate:currency==='BS'?(extra.referenceRate||usedRate):null, ownerId, private: isPrivate, tag: savingsMode ? "ahorro" : showTags ? tag : null,
     });
     onClose();
@@ -849,6 +849,7 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
         <div className="quanto-tx-progress"><p className="quanto-step-count">{lang==='es'?'Paso':'Step'} {step+1} {lang==='es'?'de':'of'} 4 · {steps[step]}</p><progress max="4" value={step+1} aria-label={lang==='es'?'Progreso del movimiento':'Transaction progress'}/><h4 ref={stepHeading} tabIndex={-1}>{steps[step]}</h4></div>
         <section hidden={step!==0} aria-label={steps[0]}>
         <label htmlFor="tx-kind" className="text-xs" style={{color:C.muted}}>{lang==='es'?'Tipo de movimiento':'Transaction type'}</label><select id="tx-kind" disabled={!!editing?.cashea} className="w-full mt-1.5 mb-4 px-3 py-2 rounded-lg" style={{background:C.bgSoft,color:C.text,border:`1px solid ${C.border}`}} value={capitalMode?'capital':savingsMode?'ahorro':type} onChange={e=>{const capital=e.target.value==='capital',saving=e.target.value==='ahorro',next=capital?'ingreso':saving?'activo':e.target.value,list=capital?CATS.ingreso.filter(c=>c.id==='aporte_capital'):saving?CATS.activo.filter(c=>SAVINGS_CATS.includes(c.id)):CATS[next];setType(next);setCapitalMode(capital);setSavingsMode(saving);setCatId(list[0].id);setTagRaw(saving?'ahorro':suggestTag(next,list[0].id));setTagTouched(false);}}>{[['ingreso','Ingreso','Income'],['egreso','Gasto','Expense'],['ahorro','Ahorro','Savings'],['activo','Activo','Asset'],['pasivo','Deuda / cuota (egreso)','Debt / installment (outflow)'],['capital','Capital (aporte)','Capital contribution']].map(([value,es,en])=><option key={value} value={value}>{lang==='es'?es:en}</option>)}</select>
+        {type==='activo'&&(savingsMode||tag==='ahorro'||SAVINGS_CATS.includes(catId))&&goals.length>0&&<label className="quanto-goal-selector">{lang==='es'?'Meta de ahorro':'Savings goal'}<select value={extra.goalId??(goals[0]?.id||'')} onChange={e=>setExtra({...extra,goalId:e.target.value})}><option value="none">{lang==='es'?'Sin meta':'No goal'}</option>{goals.length>1&&<option value="">{lang==='es'?'Selecciona una meta':'Choose a goal'}</option>}{goals.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></label>}
         <details className="quanto-tx-advanced"><summary>{lang==='es'?'Cómo afecta a mi saldo':'How it affects my balance'}</summary>        <p className="text-xs mb-4" style={{color:C.muted,lineHeight:1.7}}>{lang==='es'?'Ingreso y capital suman al disponible. Gasto y deuda/cuota restan, incluidas comisiones. Ahorro mueve dinero del disponible a un activo, sin reducir el patrimonio. Activo registra bienes o saldos adicionales: no repitas dinero que ya registraste como ingreso o capital. El patrimonio es un total calculado, no otro movimiento.':'Income and capital increase available cash. Expenses and debt/installments reduce it, including fees. Savings moves available cash into assets without reducing net worth. Assets record additional holdings: do not duplicate income or capital. Net worth is calculated, not another transaction.'}</p></details>
         {type!=='pasivo'&&<><label className="text-xs" style={{ color: C.muted }}>{t("category")}</label>
         <div className="grid grid-cols-2 gap-2 mt-1.5 mb-3">
@@ -1310,7 +1311,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
       </main>
 
       {modalType && (
-        <AddModal labelCatalog={personalLabels} key={editingTx?.id||modalType} onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
+        <AddModal goals={records.planner?.goals||[]} labelCatalog={personalLabels} key={editingTx?.id||modalType} onImportRates={importRateHistory} lang={lang} type={modalType} config={config} members={config.members} currentUser={currentUser}
           rates={records.rates} editing={editingTx} initialDate={initialDate} onClose={() => { setModalType(null); setEditingTx(null); setInitialDate(undefined);setCalendarOccurrence(null); }} onSave={saveTx}
           onEditSeries={editingTx?.seriesId?()=>openTx(records.transactions.find(tx=>tx.id===editingTx.seriesId)):undefined}
           isCopy={!!editingTx&&!editingTx.seriesId&&!records.transactions.some(tx=>tx.id===editingTx.id)} onDuplicate={editingTx&&(editingTx.seriesId||records.transactions.some(tx=>tx.id===editingTx.id))?()=>duplicateTx(calendarOccurrence||editingTx):undefined}
@@ -1570,3 +1571,4 @@ export default function App() {
     </ThemeContext.Provider>
   );
 }
+

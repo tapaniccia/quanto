@@ -1,0 +1,8 @@
+import React,{useEffect,useState} from 'react';
+export default function SavingsGauge({name,saved=0,projected,target,money,lang}){
+ const es=lang==='es',clamp=n=>Math.max(0,Math.min(1,Number(n)||0)),actual=target>0?clamp(saved/target):0,future=target>0?clamp(projected/target):actual,[ready,setReady]=useState(false);
+ useEffect(()=>{const frame=requestAnimationFrame(()=>setReady(true));return()=>cancelAnimationFrame(frame);},[]);
+ return <div className="quanto-savings-gauge" role="img" aria-label={`${name}: ${money(saved)} / ${money(target)}, ${Math.round(actual*100)}%${projected!=null?`, ${es?'proyectado':'projected'} ${money(projected)}`:''}`}><svg viewBox="0 0 240 146" aria-hidden="true"><path d="M30 110 A90 90 0 0 1 210 110" className="gauge-track" pathLength="100"/>{projected!=null&&<path d="M30 110 A90 90 0 0 1 210 110" className="gauge-projected" pathLength="100" strokeDasharray={`${ready?future*100:0} 100`}/>}<path d="M30 110 A90 90 0 0 1 210 110" className="gauge-actual" pathLength="100" strokeDasharray={`${ready?actual*100:0} 100`}/><g className="gauge-needle" style={{transform:`rotate(${ready?actual*180:0}deg)`}}><path d="M120 110 L43 110"/></g><circle cx="120" cy="110" r="5" fill="currentColor"/><text x="22" y="139">0</text><text x="192" y="139">100%</text><text className="gauge-percent" x="120" y="139" textAnchor="middle">{Math.round(actual*100)}%</text></svg><div className="gauge-details"><h3>{name}</h3><strong>{money(saved)} <span>/ {money(target)}</span></strong><span>{es?'Ahorrado actualmente':'Currently saved'}</span>{projected!=null&&<p><i/>{es?'Proyectado al cierre':'Projected at end'}: <b>{money(projected)}</b></p>}</div></div>;
+}
+
+

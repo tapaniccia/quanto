@@ -1,3 +1,4 @@
+import AccountantExport from './AccountantExport.jsx';
 import './compactUi.css';
 import Help from './Help.jsx';
 import PaymentSettings from './PaymentSettings.jsx';
@@ -22,7 +23,7 @@ import {
   ArrowRightLeft, Users, Lock, Globe, Settings as SettingsIcon, Plus, X,
   Check, Info, Calendar, LogOut, UserPlus, Banknote, Building2, Briefcase,
   Eye, EyeOff, Sparkles, Trash2, PiggyBank, KeyRound, LayoutGrid, Receipt,
-  Scale, Pencil, Sun, Moon, Target,
+  Scale, Pencil, Sun, Moon, Target, PanelLeftClose, PanelLeftOpen, FileDown,
 } from "lucide-react";
 import { ExtraFields, Comparison, Planning, CycleSettings, CustomRates, isDebtOrCashea } from "./Planning.jsx";
 import { expandTransactions, transactionValue, periodBounds, inPeriod, availableBalance, iso, isExpense, positionSummary, spendingCategory, budgetBucket } from "./finance.js";
@@ -32,7 +33,7 @@ import {CasheaFields,CasheaAmount,CasheaSettlement} from "./CasheaFields.jsx";
 import DebtPlanner from "./DebtPlanner.jsx";
 import BudgetPlanner from "./BudgetPlanner.jsx";
 import TransactionRate, {RateHistorySync} from "./TransactionRate.jsx";
-import {mergeRateHistory} from "./exchangeRates.js";
+import {mergeRateHistory,selectDatedRate} from "./exchangeRates.js";
 import {isUsdRate} from "./exchangeRates.js";
 import {usePreference} from "./preferences.js";
 import Notifications, {LocalReminders} from "./Notifications.jsx";
@@ -66,18 +67,18 @@ const DARK = {
   grad: BRAND_GRAD,
 };
 const LIGHT = {
-  bg: "#F4F3ED",
+  bg: "#F5F8FC",
   bgSoft: "#FFFFFF",
   card: "#FFFFFF",
-  card2: "rgba(20,18,10,0.055)",
+  card2: "#E9F0F9",
   border: "rgba(20,18,10,0.10)",
   gold: "#8A6A1E",
   goldSoft: "#6E5416",
   teal: "#0E7C42",
   red: "#C2453A",
   violet: "#4C6672",
-  text: "#17180F",
-  muted: "#6E6C5A",
+  text: "#172D42",
+  muted: "#596C80",
   grad: BRAND_GRAD,
 };
 
@@ -932,14 +933,6 @@ function AddModal({ labelCatalog={},lang, type: initialType, config, members, cu
         </details><details className="quanto-tx-advanced"><summary>{lang==='es'?'Factura o comprobante':'Receipt or invoice'}</summary><ReceiptField value={extra} onChange={setExtra} onBusy={setReceiptBusy} lang={lang}/>
         </details>
         <details className="quanto-tx-advanced"><summary>{lang==='es'?'Repetición, comisiones y color':'Repeat, fees and color'}</summary><ExtraFields availableMethods={enabledMethods(config)} hidePayment type={type} value={extra} setValue={setExtra} rates={rates} venezuela={config.isVenezuela} lang={lang} installmentPlan={splitCashea}/></details>
-        <Help>{lang === "es" ? "Comisión" : "Fee"}: {(Number(extra.feeFixed || 0) + Number(amount || 0) * Number(extra.feePercent || 0) / 100).toFixed(2)} {currency} · {lang === "es" ? "Total neto" : "Net total"}: {transactionValue({type,amount:Number(amount || 0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)}, false).toFixed(2)} {currency}</Help>
-        <Help>{lang === "es" ? "La descripción es opcional. Se requiere monto positivo y, en Bs, una tasa positiva. Puedes dejar la fecha vacía; los pagos recurrentes requieren fecha y frecuencia entera positiva. Las comisiones usan la moneda del movimiento." : "Description is optional. A positive amount and, for Bs, a positive rate are required. Leave the date blank to schedule later. Recurrence needs a date and positive whole-number frequency. Fees use the transaction currency."}</Help>
-        <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
-          <input type="checkbox" disabled={!!editing?.seriesId} checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-          <span className="text-sm flex items-center" style={{ color: C.text }}><Lock size={12} className="mr-1" style={{ color: C.muted }} />{t("private")}</span>
-          <InfoTip text={t("privateHelp")} />
-        </label>
-
         {isDebtOrCashea({...extra,type,catId})&&!editing?.cashea&&<label className="flex gap-2 mb-4"><input type="checkbox" checked={!!extra.debtPaid} onChange={e=>setExtra({...extra,debtPaid:e.target.checked})}/>{lang==='es'?'Ya pagué esta deuda / cuota':'I have paid this debt / installment'}</label>}
         </section><section hidden={step!==3} aria-label={steps[3]}>
         <dl className="quanto-review"><dt>{lang==='es'?'Movimiento':'Transaction'}</dt><dd>{desc||reviewCategory}{desc&&` · ${reviewCategory}`}</dd><dt>{lang==='es'?'Monto':'Amount'}</dt><dd>{Number(amount||0).toFixed(2)} {currency}{splitCashea&&` · ${lang==='es'?'Compra Cashea':'Cashea purchase'}`}</dd>{!splitCashea&&<><dt>{lang==='es'?'Total con comisiones':'Total with fees'}</dt><dd>{transactionValue({type,amount:Number(amount||0),feeFixed:extra.feeFixed,feePercent:extra.feePercent,currency,rate:Number(rate)},false).toFixed(2)} {currency}</dd></>}<dt>{lang==='es'?'Fecha':'Date'}</dt><dd>{(editing?.cashea&&settlement.paid?settlement.date:date)||(lang==='es'?'Pendiente de fecha':'Unscheduled')}</dd><dt>{lang==='es'?'Método de pago':'Payment method'}</dt><dd>{extra.paymentMethod||(lang==='es'?'Sin especificar':'Not specified')}</dd><dt>{lang==='es'?'Etiquetas':'Labels'}</dt><dd>{normalizeLabels(extra.labels).join(' / ')||(lang==='es'?'Sin etiquetas':'No labels')}</dd><dt>{lang==='es'?'Factura':'Receipt'}</dt><dd>{extra.receiptId||extra.receiptDraft?(lang==='es'?'Adjunta':'Attached'):(lang==='es'?'Sin adjunto':'No attachment')}</dd></dl>
@@ -978,6 +971,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const t = (k) => STR[lang][k];
   const showToast = useToast();
   const [tab, setTab] = useState("overview");
+  useEffect(()=>{window.scrollTo({top:0,behavior:'instant'});},[tab]);
   const [calendarRequest,setCalendarRequest]=useState(null);
   const openReminderDay=useCallback(date=>{const valid=calendarDate(date);if(!valid)return;setCalendarRequest({date:valid,id:Date.now()});setTab("calendar");},[]);
   useEffect(()=>{const fromHash=()=>{const date=calendarDateFromHash(window.location.hash);if(date)openReminderDay(date);};
@@ -985,6 +979,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     fromHash();window.addEventListener('hashchange',fromHash);navigator.serviceWorker?.addEventListener('message',fromWorker);
     return()=>{window.removeEventListener('hashchange',fromHash);navigator.serviceWorker?.removeEventListener('message',fromWorker);};
   },[openReminderDay]);
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(()=>{try{return localStorage.getItem('quanto:sidebar-collapsed')==='true';}catch{return false;}});
+  const [includePendingBalance,setIncludePendingBalance]=useState(false);
   const [modalType, setModalType] = useState(null);
   const [editingTx, setEditingTx] = useState(null);
   const [initialDate,setInitialDate]=useState(undefined);
@@ -1028,7 +1024,8 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   }, [visibleTx, toUSD, monthKey, cycle.start, cycle.end]);
 
   const netWorth = positionSummary(visibleTx,config.isVenezuela).netWorth;
-  const available = useMemo(() => availableBalance(visibleTx, config.isVenezuela, todayISO()), [visibleTx, config.isVenezuela]);
+  const available = useMemo(()=>{const end=includePendingBalance?cycleLast:todayISO(),items=expandTransactions(allVisible,'1970-01-01',includePendingBalance?cycle.end:iso(new Date(parseDate(todayISO()).getTime()+86400000)),records.exceptions||{});return availableBalance(items,config.isVenezuela,end);},[allVisible,records.exceptions,config.isVenezuela,includePendingBalance,cycle.start,cycle.end]);
+  const bannerRates=['USD','EUR'].map(code=>({code,reference:selectDatedRate(records.rates,todayISO(),code)}));
 
   const pieData = useMemo(() => {
     const byCat = {};
@@ -1072,6 +1069,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
     { id: "planner", label: lang==='es'?'Deudas':'Debts', icon: CreditCard },
     { id: "goals", label: lang==='es'?'Metas':'Goals', icon: Target },
     ...(config.isVenezuela ? [{ id: "rates", label: t("rates"), icon: ArrowRightLeft }] : []),
+    {id:"accountant",label:lang==='es'?'Exportar al contador':'Accountant export',icon:FileDown},
     { id: "settings", label: t("settings"), icon: SettingsIcon },
   ];
 
@@ -1096,40 +1094,34 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
   const delRate = (idx) => { saveRecords({ ...records, rates: records.rates.filter((_, i) => i !== idx) }); showToast(t("rateDeleted")); };
 
   return (
-    <div data-theme={theme} data-section={tab} className="quanto-app min-h-screen flex relative" style={{ background: C.bg, color: C.text, ...body }}>
+    <div data-theme={theme} data-section={tab} className={`quanto-app min-h-screen flex relative ${sidebarCollapsed?'is-sidebar-collapsed':''}`} style={{ background: C.bg, color: C.text, ...body }}>
 
       {/* Sidebar */}
-      <aside className="w-60 shrink-0 hidden md:flex flex-col p-5 relative" style={{ borderRight: `1px solid ${C.border}` }}>
-        <div className="flex items-center px-1 mb-9">
-          <Logo height={26} />
-        </div>
+      <aside className="quanto-sidebar w-60 shrink-0 hidden md:flex flex-col p-5 relative" style={{ borderRight: `1px solid ${C.border}` }}>
+        <div className="quanto-sidebar-brand">{sidebarCollapsed?<img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Quanto" width="28" height="28"/>:<Logo height={26}/>}<button type="button" aria-label={sidebarCollapsed?(lang==='es'?'Expandir menú':'Expand menu'):(lang==='es'?'Contraer menú':'Collapse menu')} onClick={()=>setSidebarCollapsed(value=>{try{localStorage.setItem('quanto:sidebar-collapsed',String(!value));}catch{}return !value;})}>{sidebarCollapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}</button></div>
         <nav className="flex flex-col gap-1">
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setTab(n.id)}
+            <button key={n.id} title={n.label} aria-label={n.label} aria-current={tab===n.id?'page':undefined} onClick={() => setTab(n.id)}
               className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl text-sm text-left font-medium transition-colors"
               style={{ background: tab === n.id ? C.card2 : "transparent", color: tab === n.id ? C.text : C.muted }}>
-              <n.icon size={16} style={{ color: tab === n.id ? C.violet : C.muted }} /> {n.label}
+              <n.icon size={16} style={{ color: tab === n.id ? C.violet : C.muted }} /> <span className="quanto-nav-label">{n.label}</span>
             </button>
           ))}
         </nav>
       </aside>
 
       {/* Main */}
-      <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
+      <main className="quanto-main flex-1 w-full">
         <header className="quanto-account-toolbar" aria-label={lang==='es'?'Cuenta y preferencias':'Account and preferences'}>
           <div className="quanto-mobile-brand md:hidden"><Logo height={28}/></div>
           <div className="quanto-account-profile"><Avatar m={me} size={24}/><span>{me.name}</span></div>
+          {config.isVenezuela&&<div className="quanto-banner-rates">{bannerRates.map(({code,reference})=><button type="button" key={code} onClick={()=>setTab('rates')} title={reference?`${reference.name||code} · ${reference.date}`:(lang==='es'?'Agregar tasa':'Add rate')}><strong>{code}</strong> {reference?`${fmt(reference.rate)} Bs`:(lang==='es'?'Sin tasa':'No rate')}<small>{reference?.date}</small></button>)}</div>}
           <div className="quanto-account-actions"><button onClick={()=>setTab("settings")} aria-label={lang==='es'?'Configurar moneda y Modo Venezuela':'Configure currency and Venezuela mode'}><ArrowRightLeft size={16}/><span>{config.isVenezuela?'USD + Bs':config.currency.code}</span></button><LocalReminders records={records} config={config} uid={window.storage?.uid||currentUser.id} currentUserId={currentUser.id} lang={lang} onCalendar={openReminderDay} onSettings={()=>setTab("settings")}/><button onClick={()=>setLang(lang==='es'?'en':'es')} aria-label={lang==='es'?'Switch to English':'Cambiar a español'}><Globe size={16}/>{lang==='es'?'EN':'ES'}</button><button onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label={lang==='es'?'Cambiar tema':'Change theme'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}<span>{theme==='dark'?t('light'):t('dark')}</span></button><button onClick={onLogout}><LogOut size={16}/><span>{t('logout')}</span></button></div>
         </header>
         <MobileNav items={NAV} active={tab} onChange={setTab} lang={lang} C={C}/>
 
-        {config.isVenezuela && latestRate && (
-          <div className="mb-5 flex items-center gap-2 px-4 py-2 rounded-full text-xs w-fit" style={{ background: C.card2, color: C.goldSoft, ...mono }}>
-            <ArrowRightLeft size={12} /> {t("latestRate")}: 1 USD = {fmt(latestRate)} Bs
-          </div>
-        )}
-
         {config.isVenezuela&&<RateHistorySync years={historyYears} onHistory={importRateHistory} lang={lang}/>}
+        {tab==='accountant'&&<AccountantExport records={records} config={config} currentUser={currentUser} lang={lang} categories={CATS} categoryLabel={tx=>{const cat=Object.values(CATS).flat().find(c=>c.id===spendingCategory(tx));return cat?.[lang==='es'?'es':'en']||spendingCategory(tx);}}/>}
         {tab === "calendar" && <Planning dayRequest={calendarRequest} theme={theme} categoryLabel={tx=>{const c=(isExpense(tx)?[...CATS.egreso,...CATS.pasivo]:CATS[tx.type]||[]).find(c=>c.id===spendingCategory(tx));return c?(lang==="es"?c.es:c.en):"";}} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} onNew={options => {setInitialDate(options?.undated?"":options?.date);setCalendarOccurrence(null);setEditingTx(null); setModalType(options?.type||"egreso");}} onEdit={(tx,occurrence) => openTx(occurrence||tx)} />}
         {tab === "overview" && (
           <div className="space-y-6">
@@ -1166,19 +1158,21 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
               })}
             </div>
 
+            <div className="quanto-position-grid">
             <Card tone="ingreso">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-medium" style={{color:C.text}}>{lang === "es" ? "Saldo disponible acumulado" : "Accumulated available balance"}</h2>
+                  <h2 className="text-sm font-medium" style={{color:C.text}}>{lang==='es'?(includePendingBalance?'Saldo proyectado al cierre':'Saldo disponible'):(includePendingBalance?'Projected closing balance':'Available balance')}</h2>
                   <p className="text-3xl font-semibold mt-2" style={{...display,color:available.balance >= 0 ? C.teal : C.red}}>{money(available.balance)}</p>
                 </div>
                 <Wallet size={28} style={{color:C.muted}} />
               </div>
+              <label className="quanto-balance-pending"><input type="checkbox" checked={includePendingBalance} onChange={e=>setIncludePendingBalance(e.target.checked)}/>{lang==='es'?'Incluir programados hasta el cierre del ciclo':'Include scheduled through cycle end'} <span>{includePendingBalance?cycleLast:''}</span></label>
               <div className="grid sm:grid-cols-2 gap-3 mt-4 text-sm" style={{color:C.muted}}>
                 <p>{lang === "es" ? "Ingresos acumulados" : "Accumulated income"}: <strong style={{color:C.teal}}>{money(available.income)}</strong></p>
                 <p>{lang === "es" ? "Gastos acumulados" : "Accumulated expenses"}: <strong style={{color:C.red}}>{money(available.expenses)}</strong></p>
               </div>
-              <Help>{lang === "es" ? "Entradas menos egresos (incluidas deudas/cuotas y comisiones) y ahorro apartado hasta hoy. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Excluye movimientos futuros y sin fecha. El saldo depende de los movimientos que hayas registrado." : "Inflows minus outflows (including debt/installments and fees) and savings set aside through today. Carries forward previous months without resetting each month or pay cycle. Excludes future and undated entries. The balance depends on your recorded transactions."}</Help>
+              <Help>{lang === "es" ? "Entradas menos egresos (incluidas deudas/cuotas y comisiones) y ahorro apartado hasta hoy. Conserva lo que queda de meses anteriores; no se reinicia al cambiar de mes o ciclo. Con la casilla se incluyen los programados hasta el cierre del ciclo mostrado. Sin fecha se excluyen." : "Inflows minus outflows (including debt/installments and fees) and savings set aside through today. Carries forward previous months without resetting each month or pay cycle. The checkbox adds scheduled entries through the displayed cycle end. Undated entries are excluded."}</Help>
             </Card>
 
             <Card>
@@ -1187,10 +1181,11 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
                   <p className="text-xs flex items-center" style={{ color: C.muted }}>{t("netWorth")}<InfoTip text={t("netWorthTip")} /></p>
                   <p className="text-3xl font-semibold mt-1" style={{ ...display, color: netWorth >= 0 ? C.teal : C.red }}>{money(netWorth)}</p>
                 </div>
-                <Scale size={28} style={{ color: C.muted }} />
-              </div>
+                <Scale size={24} style={{ color: C.muted }} />
+              </div><dl className="quanto-networth-parts"><dt>{lang==='es'?'Efectivo hasta hoy':'Cash through today'}</dt><dd>{money(positionSummary(visibleTx,config.isVenezuela).cash)}</dd><dt>{lang==='es'?'Activos registrados':'Recorded assets'}</dt><dd>{money(totals.activo)}</dd></dl>
             </Card>
 
+            </div>
             <Card><LabelSpending transactions={allVisible} exceptions={records.exceptions||{}} bounds={cycle} cycleDay={config} venezuela={config.isVenezuela} lang={lang} categories={CATS.egreso} C={C} money={money}/></Card>
             <div className="grid md:grid-cols-2 gap-4">
               <Card>
@@ -1235,46 +1230,13 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
 
         {tab === "transactions" && (
           <div>
-            <label className="quanto-search-field block text-sm">{lang === "es" ? "Buscar movimientos" : "Search transactions"}<input placeholder={lang==='es'?'Ej. mercado, Mascotas, Business o Zelle':'e.g. groceries, Pets, Business or Zelle'} type="search" value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
             <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
               <h1 className="text-2xl font-semibold" style={{ ...display, color: C.text }}>{t("transactions")}</h1>
               <Btn onClick={() => { setModalType("egreso"); setEditingTx(null); }}><Plus size={14} className="inline -mt-0.5 mr-1" />{t("addMovement")}</Btn>
             </div>
-            <div className="flex gap-2 mb-3 flex-wrap">
-              {["all", "ingreso", "egreso", "activo", "pasivo"].map((f) => (
-                <button key={f} onClick={() => setTxFilter(f)} className="px-3 py-1.5 rounded-full text-xs"
-                  style={{ background: txFilter === f ? C.gold : C.card, color: txFilter === f ? "#1A1206" : C.muted }}>
-                  {f === "all" ? t("all") : t(f === "ingreso" ? "income" : f === "egreso" ? "expenses" : f === "activo" ? "assets" : "liabilities")}
-                </button>
-              ))}
-              <div className="flex-1" />
-              {["ingreso", "egreso", "activo", "pasivo"].map((ty) => {
-                const meta = TYPE_META[ty];
-                const label = t(ty === "ingreso" ? "income" : ty === "egreso" ? "expenses" : ty === "activo" ? "assets" : "liabilities");
-                return (
-                  <button key={ty} onClick={() => { setModalType(ty); setEditingTx(null); }} aria-label={`${t("addMovement")} · ${label}`} title={label} className="quanto-icon-action w-8 h-8 flex items-center justify-center" style={{ background: `${meta.color}22`, border: `1px solid ${meta.color}55` }}>
-                    <meta.icon size={13} style={{ color: meta.color }} />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-2 mb-4 flex-wrap items-center">
-              <span className="text-xs mr-1" style={{ color: C.muted }}>{t("tagLabel")}:</span>
-              <button onClick={() => setTagFilter("all")} className="px-3 py-1.5 rounded-full text-xs"
-                style={{ background: tagFilter === "all" ? C.card2 : "transparent", border: `1px solid ${C.border}`, color: C.muted }}>
-                {t("all")}
-              </button>
-              {TAG_ORDER.map((tg) => (
-                <button key={tg} onClick={() => setTagFilter(tg)} className="px-3 py-1.5 rounded-full text-xs font-medium"
-                  style={{ background: tagFilter === tg ? `${TAG_META[tg].color}22` : "transparent", border: `1px solid ${tagFilter === tg ? TAG_META[tg].color : C.border}`, color: tagFilter === tg ? TAG_META[tg].color : C.muted }}>
-                  {t(TAG_INFO[tg].labelKey)}
-                </button>
-              ))}
-            </div>
+            <details className="quanto-ledger-filters"><summary>{lang==='es'?'Filtrar y ordenar movimientos':'Filter and sort transactions'}</summary>            <label className="quanto-search-field block text-sm">{lang === "es" ? "Buscar movimientos" : "Search transactions"}<input placeholder={lang==='es'?'Ej. mercado, Mascotas, Business o Zelle':'e.g. groceries, Pets, Business or Zelle'} type="search" value={search} onChange={e=>setSearch(e.target.value)} className="block w-full p-3 mt-2 rounded-lg border bg-transparent" /></label>
+<div className="quanto-filter-grid"><label>{lang==='es'?'Mes de los movimientos':'Transaction month'}<input type="month" value={listMonth} onChange={e=>e.target.value&&setListMonth(e.target.value)}/></label><label>{lang==='es'?'Tipo de movimiento':'Transaction type'}<select value={txFilter} onChange={e=>setTxFilter(e.target.value)}>{[['all','Todos','All'],['ingreso','Ingresos','Income'],['egreso','Gastos','Expenses'],['activo','Activos / ahorro','Assets / savings'],['pasivo','Deudas / cuotas','Debt / installments']].map(([id,es,en])=><option key={id} value={id}>{lang==='es'?es:en}</option>)}</select></label><label>{lang==='es'?'Grupo de presupuesto':'Budget group'}<select value={tagFilter} onChange={e=>setTagFilter(e.target.value)}><option value="all">{lang==='es'?'Todos':'All'}</option>{TAG_ORDER.map(tag=><option key={tag} value={tag}>{t(TAG_INFO[tag].labelKey)}</option>)}</select></label>{[['from','Desde','From','date'],['through','Hasta','Through','date'],['min','Monto mínimo','Minimum amount','number'],['max','Monto máximo','Maximum amount','number'],['label','Etiqueta personal','Personal label','text']].map(([key,es,en,type])=><label key={key}>{lang==='es'?es:en}{['min','max'].includes(key)&&` (${config.isVenezuela?'USD':config.currency.code})`}<input type={type} min={type==='number'?0:undefined} step={type==='number'?'0.01':undefined} value={ledgerFilters[key]} onChange={e=>setLedgerFilters({...ledgerFilters,[key]:e.target.value})}/></label>)}<label>{lang==='es'?'Categoría':'Category'}<select value={ledgerFilters.category} onChange={e=>setLedgerFilters({...ledgerFilters,category:e.target.value})}><option value="">{lang==='es'?'Todas':'All'}</option>{[...new Map(Object.values(CATS).flat().map(c=>[c.id,c])).values()].map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select></label><label>{lang==='es'?'Método de pago':'Payment method'}<select value={ledgerFilters.method} onChange={e=>setLedgerFilters({...ledgerFilters,method:e.target.value})}><option value="">{lang==='es'?'Todos':'All'}</option>{[...new Set([...enabledMethods(config),...allVisible.map(tx=>tx.paymentMethod).filter(Boolean)])].map(method=><option key={method}>{method}</option>)}</select></label><label>{lang==='es'?'Ordenar por':'Sort by'}<select value={ledgerSort} onChange={e=>setLedgerSort(e.target.value)}><option value="date">{lang==='es'?'Fecha':'Date'}</option><option value="amount">{lang==='es'?'Monto':'Amount'}</option><option value="labels">{lang==='es'?'Etiquetas':'Labels'}</option></select></label><label>{lang==='es'?'Orden':'Order'}<select value={ledgerDirection} onChange={e=>setLedgerDirection(e.target.value)}><option value="desc">{lang==='es'?'Descendente':'Descending'}</option><option value="asc">{lang==='es'?'Ascendente':'Ascending'}</option></select></label></div><button type="button" onClick={()=>{setLedgerFilters({min:'',max:'',from:'',through:'',label:'',category:'',method:''});setSearch('');setTxFilter('all');setTagFilter('all');setLedgerSort('date');setLedgerDirection('desc');}}>{lang==='es'?'Limpiar filtros':'Clear filters'}</button>{ledgerFilters.from&&ledgerFilters.through&&ledgerFilters.from>ledgerFilters.through&&<p role="alert">{lang==='es'?'La fecha inicial debe ser anterior a la final.':'Start date must be before end date.'}</p>}</details>
 
-            <details className="quanto-ledger-filters"><summary>{lang==='es'?'Filtrar y ordenar movimientos':'Filter and sort transactions'}</summary><div className="quanto-filter-grid">{[['from','Desde','From','date'],['through','Hasta','Through','date'],['min','Monto mínimo','Minimum amount','number'],['max','Monto máximo','Maximum amount','number'],['label','Etiqueta personal','Personal label','text']].map(([key,es,en,type])=><label key={key}>{lang==='es'?es:en}{['min','max'].includes(key)&&` (${config.isVenezuela?'USD':config.currency.code})`}<input type={type} min={type==='number'?0:undefined} step={type==='number'?'0.01':undefined} value={ledgerFilters[key]} onChange={e=>setLedgerFilters({...ledgerFilters,[key]:e.target.value})}/></label>)}<label>{lang==='es'?'Categoría':'Category'}<select value={ledgerFilters.category} onChange={e=>setLedgerFilters({...ledgerFilters,category:e.target.value})}><option value="">{lang==='es'?'Todas':'All'}</option>{[...new Map(Object.values(CATS).flat().map(c=>[c.id,c])).values()].map(c=><option key={c.id} value={c.id}>{lang==='es'?c.es:c.en}</option>)}</select></label><label>{lang==='es'?'Método de pago':'Payment method'}<select value={ledgerFilters.method} onChange={e=>setLedgerFilters({...ledgerFilters,method:e.target.value})}><option value="">{lang==='es'?'Todos':'All'}</option>{[...new Set([...enabledMethods(config),...allVisible.map(tx=>tx.paymentMethod).filter(Boolean)])].map(method=><option key={method}>{method}</option>)}</select></label><label>{lang==='es'?'Ordenar por':'Sort by'}<select value={ledgerSort} onChange={e=>setLedgerSort(e.target.value)}><option value="date">{lang==='es'?'Fecha':'Date'}</option><option value="amount">{lang==='es'?'Monto':'Amount'}</option><option value="labels">{lang==='es'?'Etiquetas':'Labels'}</option></select></label><label>{lang==='es'?'Orden':'Order'}<select value={ledgerDirection} onChange={e=>setLedgerDirection(e.target.value)}><option value="desc">{lang==='es'?'Descendente':'Descending'}</option><option value="asc">{lang==='es'?'Ascendente':'Ascending'}</option></select></label></div><button type="button" onClick={()=>{setLedgerFilters({min:'',max:'',from:'',through:'',label:'',category:'',method:''});setSearch('');setTxFilter('all');setTagFilter('all');setLedgerSort('date');setLedgerDirection('desc');}}>{lang==='es'?'Limpiar filtros':'Clear filters'}</button>{ledgerFilters.from&&ledgerFilters.through&&ledgerFilters.from>ledgerFilters.through&&<p role="alert">{lang==='es'?'La fecha inicial debe ser anterior a la final.':'Start date must be before end date.'}</p>}</details>
-            <label className="flex gap-3 items-center mb-4">{lang==='es'?'Mes de los movimientos':'Transaction month'}<input type="month" value={listMonth} onChange={e=>{if(e.target.value)setListMonth(e.target.value);}} style={{background:C.card,color:C.text,border:`1px solid ${C.border}`,padding:10,borderRadius:8}}/></label>
-            <Help>{lang==='es'?'Mismos movimientos y fechas que el calendario, incluidas las recurrencias. Los pendientes sin fecha también aparecen aquí.':'Same transactions and dates as the calendar, including recurring occurrences. Undated transactions appear here too.'}</Help>
             <Card style={{ padding: 0 }}>
               {listVisible.filter((tx) => (!search || [tx.desc,tx.customCategory,tx.beneficiary,tx.group,tx.labels,tx.paymentMethod,spendingCategory(tx),[...CATS.ingreso,...CATS.egreso,...CATS.activo,...CATS.pasivo].find(c=>c.id===spendingCategory(tx))?.[lang==='es'?'es':'en']].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))) && (txFilter === "all" || tx.type === txFilter) && (tagFilter === "all" || effTag(tx) === tagFilter)).length === 0 ? (
                 <div className="py-12 text-center">
@@ -1335,7 +1297,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "budget" && <BudgetPlanner key={JSON.stringify([config.cycleFrequency,config.cycleDay,config.cycleSecondDay,config.cycleAnchor])} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
+        {tab === "budget" && <BudgetPlanner categories={CATS.egreso.map(c=>({...c,bucket:suggestTag('egreso',c.id)==='gusto'?'wants':suggestTag('egreso',c.id)==='ahorro'?'savings':'needs'}))} key={JSON.stringify([config.cycleFrequency,config.cycleDay,config.cycleSecondDay,config.cycleAnchor])} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
         {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} categoryLabel={tx=>{const category=[...CATS.egreso,...CATS.pasivo].find(c=>c.id===spendingCategory(tx));return category?(lang==='es'?category.es:category.en):'';}} onEdit={openTx}/>}
 
         {tab === "rates" && config.isVenezuela && (

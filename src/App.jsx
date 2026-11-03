@@ -1297,7 +1297,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
           </div>
         )}
 
-        {tab === "budget" && <BudgetPlanner categories={CATS.egreso.map(c=>({...c,bucket:suggestTag('egreso',c.id)==='gusto'?'wants':suggestTag('egreso',c.id)==='ahorro'?'savings':'needs'}))} key={JSON.stringify([config.cycleFrequency,config.cycleDay,config.cycleSecondDay,config.cycleAnchor])} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
+        {tab === "budget" && <BudgetPlanner categories={[...new Map(Object.entries(CATS).flatMap(([type,list])=>list.map(c=>[c.id,{...c,type,bucket:type==='activo'?'savings':suggestTag(type,c.id)==='gusto'?'wants':suggestTag(type,c.id)==='ahorro'?'savings':'needs'}])).map(([id,c])=>[id,c])).values()]} key={JSON.stringify([config.cycleFrequency,config.cycleDay,config.cycleSecondDay,config.cycleAnchor])} records={records} config={config} saveConfig={saveConfig} lang={lang} currentUser={currentUser}/>}
         {(tab === "planner" || tab === "goals") && <DebtPlanner key={tab} view={tab==='goals'?'goals':'debts'} records={records} saveRecords={saveRecords} config={config} lang={lang} currentUser={currentUser} theme={theme} categoryLabel={tx=>{const category=[...CATS.egreso,...CATS.pasivo].find(c=>c.id===spendingCategory(tx));return category?(lang==='es'?category.es:category.en):'';}} onEdit={openTx}/>}
 
         {tab === "rates" && config.isVenezuela && (
@@ -1305,7 +1305,7 @@ function Dashboard({ lang, setLang, config, saveConfig, records, saveRecords, cu
         )}
 
         {tab === "settings" && (
-          <><h1 className="text-2xl font-semibold mb-6">{t("settings")}</h1><RegionSettings config={config} saveConfig={saveConfig} lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><PaymentSettings config={config} saveConfig={saveConfig} lang={lang}/><Notifications lang={lang}/><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></>
+          <div className="quanto-settings-workspace"><header className="quanto-page-heading"><div><h1>{t("settings")}</h1><p>{lang==='es'?'Personaliza tu cuenta y tu forma de organizar el dinero.':'Customize your account and how you organize your money.'}</p></div></header><div className="quanto-settings-primary"><RegionSettings config={config} saveConfig={saveConfig} lang={lang}/><CycleSettings config={config} saveConfig={saveConfig} lang={lang}/><PaymentSettings config={config} saveConfig={saveConfig} lang={lang}/><Notifications lang={lang}/></div><SettingsTab lang={lang} t={t} config={config} saveConfig={saveConfig} setLang={setLang} currentUserId={currentUser.id} /></div>
         )}
       </main>
 
